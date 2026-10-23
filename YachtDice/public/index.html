@@ -1,7 +1,7 @@
 <!doctype html>
-<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>快艇骰子 · HGame</title><link rel="stylesheet" href="/style.css"></head>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>快艇骰子 · HGame</title><script>try{if(localStorage.getItem('yacht-view')==='quiet'){document.documentElement.dataset.view='quiet';document.title='数据工作台 · 本地';}}catch{}</script><link rel="stylesheet" href="/style.css"></head>
 <body>
-<header><a class="brand" href="/">H<span>▧</span>GAME <small>个人游戏室 / 001</small></a><nav><select id="theme" aria-label="主题"><option value="system">跟随系统</option><option value="dark">深色</option><option value="light">浅色</option></select><button id="rulesButton" class="quiet">玩法说明</button><button id="aiButton" class="quiet">模型设置 ↗</button></nav></header>
+<header><a class="brand" href="/">H<span>▧</span>GAME <small>个人游戏室 / 001</small></a><nav><button id="viewButton" class="quiet" aria-pressed="false" title="切换简洁模式（Alt+M）">简洁模式</button><select id="theme" aria-label="主题"><option value="system">跟随系统</option><option value="dark">深色</option><option value="light">浅色</option></select><button id="rulesButton" class="quiet">玩法说明</button><button id="aiButton" class="quiet">模型设置 ↗</button></nav></header>
 <main>
 <section class="title"><div><div class="eyebrow">FIVE DICE. ENDLESS POSSIBILITIES.</div><h1>快艇骰子<span>Yacht Dice</span></h1><p>留住好运，再掷一次。用五颗骰子，写下你的制胜组合。</p></div><button id="newButton" class="outline">＋ 新对局</button></section>
 <div class="layout"><section class="play-column"><div id="players" class="players"></div>

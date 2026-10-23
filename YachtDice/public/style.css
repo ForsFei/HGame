@@ -8,3 +8,67 @@
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important}}
 .play-column,.score-panel{min-width:0}
 @media(max-width:420px){.die{width:50px;height:50px;padding:7px;border-radius:10px}.dice{gap:8px}.pip{width:7px;height:7px}.die.held:after{top:57px}.table-center{padding:0 10px}header{padding:0 10px}nav{gap:2px}nav button.quiet{padding:8px 5px}.eyebrow{letter-spacing:1.8px}h1{font-size:27px}.score-heading{padding:18px}}
+
+/* Quiet workspace: the same controls and state, rendered as a plain local worksheet. */
+:root[data-view=quiet]{color-scheme:light;--bg:#f6f7f9;--panel:#fff;--panel2:#f2f4f7;--text:#263345;--muted:#6a7786;--line:#dce1e7;--accent:#456487;--green:#456487;--shadow:none;font-family:'Segoe UI','Microsoft YaHei',sans-serif;font-size:13px}
+:root[data-view=quiet]:not(.view-ready) body{visibility:hidden}
+[data-view=quiet] *,[data-view=quiet] *:before,[data-view=quiet] *:after{animation:none!important;transition:none!important}
+[data-view=quiet] button:hover:not(:disabled){transform:none;filter:none;background:#e8edf3}
+[data-view=quiet] header{height:56px;max-width:none;padding:0 28px;background:#fff}
+[data-view=quiet] .brand{font-size:15px;font-weight:600;letter-spacing:0;white-space:nowrap}
+[data-view=quiet] .brand small{font-size:11px;letter-spacing:0;margin-left:15px}
+[data-view=quiet] nav{gap:12px}
+[data-view=quiet] #theme{display:none}
+[data-view=quiet] main{max-width:1150px;padding:24px 28px 0}
+[data-view=quiet] .title{margin-bottom:20px;align-items:center}
+[data-view=quiet] .title h1{font-size:21px;letter-spacing:0;margin:0;font-weight:600}
+[data-view=quiet] h1 span{font:12px 'Segoe UI','Microsoft YaHei',sans-serif;margin-left:12px;display:inline}
+[data-view=quiet] .title p{font-size:12px;margin-top:8px}
+[data-view=quiet] .eyebrow,[data-view=quiet] .boat,[data-view=quiet] .avatar,[data-view=quiet] .status-icon,[data-view=quiet] .roll-progress,[data-view=quiet] .table-bottom,[data-view=quiet] .live-dot:before,[data-view=quiet] .table:before{display:none}
+[data-view=quiet] .layout{grid-template-columns:minmax(0,1fr) 390px;gap:22px}
+[data-view=quiet] .players{gap:0;border:1px solid var(--line);border-radius:3px;background:#fff;flex-wrap:wrap;margin-bottom:16px}
+[data-view=quiet] .player{border:0;border-radius:0;box-shadow:none;padding:12px 15px;min-width:45%;border-left:3px solid transparent}
+[data-view=quiet] .player.active{border-left-color:#687f9b;background:#f0f3f7}
+[data-view=quiet] .player b{font-size:20px}
+[data-view=quiet] .player small{font-size:11px}
+[data-view=quiet] .table{background:#fff;color:var(--text);border:1px solid var(--line);outline:none;box-shadow:none;border-radius:3px;min-height:0}
+[data-view=quiet] .table-top{color:var(--muted);padding:13px 16px;border-bottom:1px solid var(--line);letter-spacing:0;font-size:11px}
+[data-view=quiet] .table-center{padding:16px;text-align:left}
+[data-view=quiet] .table h2{font-size:14px;margin:0 0 8px;font-weight:600}
+[data-view=quiet] .table-center>p{color:var(--muted);font-size:12px;margin:0}
+[data-view=quiet] .dice{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin:20px 0}
+[data-view=quiet] .die{display:flex;flex-direction:column;align-items:flex-start;justify-content:space-between;width:100%;height:91px;background:#fff;color:var(--text);border:1px solid var(--line);border-radius:3px;box-shadow:none;padding:9px;gap:4px;transform:none}
+[data-view=quiet] .die.held{background:#edf2f8;border-color:#687f9b;box-shadow:inset 0 0 0 1px #687f9b;transform:none}
+[data-view=quiet] .die.held:after{display:none}
+[data-view=quiet] .field-label{font-size:10px;color:var(--muted);white-space:nowrap}
+[data-view=quiet] .field-value{font-size:22px;font-variant-numeric:tabular-nums;line-height:1.1;font-weight:500}
+[data-view=quiet] .field-state{font-size:10px;color:var(--muted)}
+[data-view=quiet] button{border-radius:3px;font-size:12px;padding:8px 12px}
+[data-view=quiet] button.primary{background:#526d8c;color:#fff;font-weight:500;padding:9px 16px}
+[data-view=quiet] button.primary:hover:not(:disabled){background:#405c7b}
+[data-view=quiet] #rollButton{font-size:12px;min-width:115px}
+[data-view=quiet] .table-center p.table-hint{font-size:10px;color:var(--muted);margin:12px 0 0}
+[data-view=quiet] .status-panel{padding:15px 0;min-height:68px}
+[data-view=quiet] .status-panel p{font-size:11px;margin-top:5px}
+[data-view=quiet] .history{display:block;margin-top:10px}
+[data-view=quiet] .history-entry{font-size:11px}
+[data-view=quiet] .section-label{font-size:11px}
+[data-view=quiet] .score-panel{border-radius:3px;box-shadow:none}
+[data-view=quiet] .score-heading{padding:14px 16px}
+[data-view=quiet] .score-heading h2{font-size:14px;font-weight:600}
+[data-view=quiet] th{padding:9px 12px;font-size:11px}
+[data-view=quiet] td{height:32px;font-size:12px}
+[data-view=quiet] th:first-child,[data-view=quiet] td:first-child{padding-left:16px}
+[data-view=quiet] .score-value{border:1px solid var(--line);background:#f8f9fb;border-radius:2px;padding:2px 8px;min-width:35px}
+[data-view=quiet] .score-value.selected{background:#dfe8f3;color:#243e5d;border-color:#687f9b}
+[data-view=quiet] .summary td{height:30px}
+[data-view=quiet] .total td{height:43px;font-size:17px}
+[data-view=quiet] .total td:first-child{font-size:12px}
+[data-view=quiet] .score-note{font-size:10px;padding:12px 16px}
+[data-view=quiet] footer{font-size:10px;letter-spacing:0;margin-top:24px;padding:16px 0}
+[data-view=quiet] dialog{border-radius:4px;box-shadow:0 12px 36px #172a451a;padding:24px}
+[data-view=quiet] dialog::backdrop{background:#26334533;backdrop-filter:none}
+[data-view=quiet] dialog h2{font-size:19px}
+[data-view=quiet] select,[data-view=quiet] input{border-radius:3px;background:#fff}
+@media(max-width:790px){[data-view=quiet] header{padding:0 14px}[data-view=quiet] .brand small{display:none}[data-view=quiet] nav{gap:3px}[data-view=quiet] main{padding:20px 14px 0}[data-view=quiet] .layout{grid-template-columns:1fr}[data-view=quiet] .table-center{padding:14px}[data-view=quiet] .title h1{font-size:20px}[data-view=quiet] .die{padding:7px;height:84px}[data-view=quiet] .dice{gap:6px}[data-view=quiet] .field-label{font-size:9px}}
+@media(max-width:420px){header{height:auto;min-height:65px;flex-wrap:wrap;gap:6px;padding:12px 10px}nav{margin-left:auto}[data-view=quiet] header{min-height:56px;padding:10px 14px}}
