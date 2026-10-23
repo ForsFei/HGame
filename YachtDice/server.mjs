@@ -4,8 +4,10 @@ import {fileURLToPath} from 'node:url';
 import {resolve, extname} from 'node:path';
 import {requestDecision,ModelError} from './model-api.mjs';
 import {randomUUID} from 'node:crypto';
+import {createTraceLogger} from './model-trace.mjs';
 export function makeServer(modelOptions={}) {
  const root=fileURLToPath(new URL('./public/',import.meta.url));
+ const trace=modelOptions.trace??createTraceLogger();
  return http.createServer(async(req,res)=>{
   const send=(status,data)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(data));};
   try {
@@ -17,11 +19,11 @@ export function makeServer(modelOptions={}) {
     if(!config?.key || !config?.model || !game?.players?.[game.turn] || !Array.isArray(game.dice) || game.dice.length!==5) return send(400,{error:'请填写 API Key、模型和有效对局'});
     const requestId=randomUUID().slice(0,8);
     try {
-     return send(200,{...await requestDecision(config,game,modelOptions),requestId});
+     return send(200,{...await requestDecision(config,game,{...modelOptions,trace,requestId}),requestId});
     } catch(error) {
      const known=error instanceof ModelError;
      const code=known?error.code:'INTERNAL_ERROR';
-     // Do not log credentials, upstream bodies, player data, or raw exception messages.
+     // Console output stays compact. Detailed redacted traces are written locally.
      console.warn(`[model] ${requestId} ${code} attempts=${error.attempts||1}`);
      return send(known?error.status:500,{error:known?error.message:'本机模型代理处理失败，请重启服务后重试。',code,attempts:error.attempts||1,requestId});
     }

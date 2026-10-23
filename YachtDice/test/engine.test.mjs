@@ -44,7 +44,7 @@ test('all built-in levels finish entire 4-player games',()=>{
 test('local service and mock model proxy handle success and failure',async()=>{
  const http=await import('node:http');let captured;
  const mock=http.createServer(async(req,res)=>{let body='';for await(const b of req)body+=b;captured=JSON.parse(body);res.setHeader('Content-Type','application/json');res.end(JSON.stringify({choices:[{message:{content:captured.model==='invalid'?'bad output':'{"type":"score","category":"choice"}'}}]}));});
- await new Promise(r=>mock.listen(0,'127.0.0.1',r));const server=makeServer();await new Promise(r=>server.listen(0,'127.0.0.1',r));
+ await new Promise(r=>mock.listen(0,'127.0.0.1',r));const server=makeServer({trace:async()=>{}});await new Promise(r=>server.listen(0,'127.0.0.1',r));
  const base=`http://127.0.0.1:${server.address().port}`;const g=createGame([{name:'a',type:'model'}]);roll(g);
  const config={key:'test-secret',model:'mock',base:`http://127.0.0.1:${mock.address().port}/v1`};
  const request=(body,headers={})=>fetch(base+'/api/decision',{method:'POST',headers:{'Content-Type':'application/json',...headers},body:JSON.stringify(body)});

@@ -52,7 +52,9 @@ Key 和模型配置仅在当前页面内存保存，不写入文件或 localStor
 
 网络中断、超时、429/部分 5xx、空回复、截断或无效决策会自动重试一次；每次尝试最多 45 秒，页面等待预算为 100 秒。重试可能额外消耗接口额度，一次决策最多发出两次请求。401（Key）、402（余额）、400/422（参数）等错误直接暂停。失败后保留骰子与计分表，可以手动重试或本回合使用内置人机。
 
-错误提示会显示分类（如 `NETWORK_ERROR`、`EMPTY_CONTENT`、`HTTP_429`）、尝试次数和错误编号。启动窗口仅记录编号、错误分类与次数，不记录 Key、对局内容或原始上游回复。`NETWORK_ERROR` 时需检查本机 Node 服务使用的网络环境；浏览器或 Windows 配置的代理不一定自动作用于 Node。
+错误提示会显示分类（如 `NETWORK_ERROR`、`EMPTY_CONTENT`、`HTTP_429`）、尝试次数和错误编号。启动窗口仅显示编号、错误分类与次数；逐次输入输出保存到本机 `logs/model-api-YYYY-MM-DD.jsonl`，包含请求体、原始回复、采用动作与失败原因，认证头不写入，当前 Key 会脱敏。日志目录已忽略，不会推送到 GitHub。具体字段和提示词全文见 [提示词说明](提示词说明.md)。日志写入失败不会阻止游戏；旧版本的调用无法补记。
+
+`NETWORK_ERROR` 时需检查本机 Node 服务使用的网络环境；浏览器或 Windows 配置的代理不一定自动作用于 Node。
 
 DeepSeek JSON 输出与空回复说明参考 [官方 JSON Output 文档](https://api-docs.deepseek.com/guides/json_mode/)，HTTP 分类参考 [官方错误码](https://api-docs.deepseek.com/quick_start/error_codes/)。
 
@@ -61,6 +63,8 @@ DeepSeek JSON 输出与空回复说明参考 [官方 JSON Output 文档](https:/
 浏览器 localStorage 自动保存一局进度、玩家名及主题。新建对局覆盖旧存档。隐私模式或禁用存储时可能无法恢复。界面支持深色、浅色及跟随系统；无外部字体、图片或运行时依赖。
 
 - `server.mjs`：本地静态服务、模型代理和同源访问检查。
+- `model-api.mjs`：模型提示、请求重试、返回解析和动作校验。
+- `model-trace.mjs`：本地 JSONL 日志、按日分文件及 Key 脱敏。
 - `public/engine.js`：计分规则、对局状态、内置策略、模型动作校验。
 - `public/app.js`：界面、存档、模型回合和交互。
 - `public/style.css`：响应式牌桌样式。

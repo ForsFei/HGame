@@ -26,7 +26,7 @@ test('transient HTTP statuses retry once; configuration and billing errors do no
 test('request and response-body timeouts are bounded and retried once',async()=>{
  for(const delayedBody of [false,true]){
   let calls=0;
-  await assert.rejects(requestDecision(config,game(),{timeoutMs:15,retryDelayMs:0,fetchImpl:async(url,{signal})=>{calls++;const pending=()=>new Promise((resolve,reject)=>{const timer=setTimeout(resolve,200);signal.addEventListener('abort',()=>{clearTimeout(timer);reject(signal.reason);},{once:true});});if(delayedBody)return {ok:true,json:pending};return pending();}}),e=>e.code==='TIMEOUT'&&e.attempts===2);
+  await assert.rejects(requestDecision(config,game(),{timeoutMs:15,retryDelayMs:0,fetchImpl:async(url,{signal})=>{calls++;const pending=()=>new Promise((resolve,reject)=>{const timer=setTimeout(resolve,200);signal.addEventListener('abort',()=>{clearTimeout(timer);reject(signal.reason);},{once:true});});if(delayedBody)return {ok:true,text:pending};return pending();}}),e=>e.code==='TIMEOUT'&&e.attempts===2);
   assert.equal(calls,2);
  }
 });
@@ -35,7 +35,7 @@ test('truncated output is distinct and generic compatible services do not receiv
  await assert.rejects(requestDecision({...config,base:'https://example.com/v1'},game(),{retryDelayMs:0,fetchImpl:async(url,options)=>{calls++;const p=JSON.parse(options.body);assert.equal(p.thinking,undefined);assert.equal(p.response_format,undefined);return Response.json({choices:[{finish_reason:'length',message:{content:'{"type":'}}]});}}),e=>e.code==='OUTPUT_TRUNCATED');assert.equal(calls,2);
 });
 test('local route returns classified errors, safe request IDs, retry count and invalid-request errors',async()=>{
- const server=makeServer({retryDelayMs:0,fetchImpl:async()=>{throw new TypeError('secret detail',{cause:{code:'ECONNRESET'}});}});await new Promise(r=>server.listen(0,'127.0.0.1',r));
+ const server=makeServer({trace:async()=>{},retryDelayMs:0,fetchImpl:async()=>{throw new TypeError('secret detail',{cause:{code:'ECONNRESET'}});}});await new Promise(r=>server.listen(0,'127.0.0.1',r));
  const base=`http://127.0.0.1:${server.address().port}`;
  try{
   const response=await fetch(base+'/api/decision',{method:'POST',body:JSON.stringify({config,game:game()})});const data=await response.json();assert.equal(response.status,502);assert.equal(data.code,'NETWORK_ERROR');assert.equal(data.attempts,2);assert.match(data.requestId,/^[a-f0-9]{8}$/);assert.ok(!JSON.stringify(data).includes('secret'));
