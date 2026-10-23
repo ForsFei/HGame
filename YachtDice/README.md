@@ -1,0 +1,55 @@
+# 快艇骰子 · HGame 001
+
+个人小游戏系列的第一作。原创航海牌桌界面，参考《世界游戏大全51》快艇骰子的玩法，不包含任天堂素材。无需安装依赖、登录或联网即可挑战内置人机。
+
+## 启动
+
+安装 Node.js 22 或更新版本，然后双击 `启动游戏.bat`。浏览器打开 <http://127.0.0.1:43170>。保留命令窗口，关闭窗口停止服务。
+
+也可在本目录执行 `npm start`，运行 `npm test` 检查规则与服务。服务只监听 127.0.0.1。端口冲突时可在 PowerShell 中先执行 `$env:PORT=43171`，再执行 `npm start`，手动访问对应端口。
+
+## 游玩
+
+- 单人对战内置人机：休闲、标准、挑战三档。休闲采用随机策略，标准与挑战对 32 种保留组合采样比较，挑战使用更多样本；不是全局最优求解器。
+- 本地多人：2–4 人在同一设备轮流操作，不含局域网、远程联机。
+- 自由练习：一个人完成计分表。
+- 模型对战：与自己配置的 GPT、DeepSeek 或兼容 Chat Completions 的服务对战。
+
+每人 12 回合，每回合最多掷骰 3 次。点击骰子切换保留状态；掷骰后点击可用分数，再按确认按钮填入。0 分也会消耗项目。所有人填满后比较总分，支持平局。
+
+| 项目 | 分数 |
+| --- | --- |
+| 一至六点 | 对应点数之和 |
+| 上半区奖励 | 一至六点合计至少 63 分，奖励 35 分 |
+| 全选 | 五颗点数总和 |
+| 四骰同花 | 至少四颗相同，计五颗总和 |
+| 葫芦 | 严格三颗相同加两颗相同，计五颗总和；五颗相同不算 |
+| 小顺子 | 含四个连续点数，15 分 |
+| 大顺子 | 五个连续点数，30 分 |
+| 快艇 | 五颗相同，50 分，无额外奖励 |
+
+规则参考：[Clubhouse Games Yacht Dice 指南](https://gamefaqs.gamespot.com/switch/286602-clubhouse-games-51-worldwide-classics/faqs/78437/yacht-dice)。本作明确采用严格 3+2 葫芦。
+
+## 配置模型对手
+
+1. 打开右上角「模型设置」，选择 OpenAI、DeepSeek 或自定义。
+2. 填写基础地址、当前账号可用的模型 ID 和 API Key。基础地址不能包含 `/chat/completions`，程序会自动追加。
+3. 应用后新建对局，选择「单人 · 对战 AI 模型」。首掷由程序执行，后续保留及计分由模型决定。
+
+OpenAI 默认基础地址为 `https://api.openai.com/v1`，模型 ID 需自行填写；DeepSeek 预设为 `https://api.deepseek.com` 和 `deepseek-flash`，以服务商账号实际支持为准。自建本机服务可使用 `http://127.0.0.1:11434/v1` 等地址；若不要求密钥，可以填入非空占位值。
+
+按 [OpenAI Chat Completions 文档](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create)，官方 OpenAI 域名或 `gpt-` / `o数字` 模型使用 `max_completion_tokens`（上限 4096，含推理）；其他兼容服务使用 `max_tokens`（上限 2048）。[DeepSeek 官方文档](https://api-docs.deepseek.com/api/create-chat-completion/) 对应的官方接口关闭思考模式以减少回合等待。若自定义网关的参数协议不同，需要调整 `server.mjs` 的参数分支。
+
+Key 和模型配置仅在当前页面内存保存，不写入文件或 localStorage。刷新需重填。Key 经本机 Node 服务发送给所填接口；对局骰子、玩家名和计分表也会发给接口。不要填写不信任的服务地址。当前 Codex/ChatGPT 聊天不会自动接入游戏，聊天订阅也不包含 API 额度。模型决策会消耗自己的接口额度，最多每回合三次请求。
+
+接口适配 Chat Completions 文本返回，不保证适配所有模型或专有 API。超时、无效 JSON 或非法动作时会暂停，明确提供重试或本回合使用内置人机，不会偷偷替换模型。
+
+## 存档与结构
+
+浏览器 localStorage 自动保存一局进度、玩家名及主题。新建对局覆盖旧存档。隐私模式或禁用存储时可能无法恢复。界面支持深色、浅色及跟随系统；无外部字体、图片或运行时依赖。
+
+- `server.mjs`：本地静态服务、模型代理和同源访问检查。
+- `public/engine.js`：计分规则、对局状态、内置策略、模型动作校验。
+- `public/app.js`：界面、存档、模型回合和交互。
+- `public/style.css`：响应式牌桌样式。
+- `test/engine.test.mjs`：规则边界、完整人机对局、接口代理及故障分支。
