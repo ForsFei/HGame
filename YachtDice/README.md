@@ -48,7 +48,13 @@ OpenAI 默认基础地址为 `https://api.openai.com/v1`，模型 ID 需自行�
 
 Key 和模型配置仅在当前页面内存保存，不写入文件或 localStorage。刷新需重填。Key 经本机 Node 服务发送给所填接口；对局骰子、玩家名和计分表也会发给接口。不要填写不信任的服务地址。当前 Codex/ChatGPT 聊天不会自动接入游戏，聊天订阅也不包含 API 额度。模型决策会消耗自己的接口额度，最多每回合三次请求。
 
-接口适配 Chat Completions 文本返回，不保证适配所有模型或专有 API。超时、无效 JSON 或非法动作时会暂停，明确提供重试或本回合使用内置人机，不会偷偷替换模型。
+接口适配 Chat Completions 文本返回，不保证适配所有模型或专有 API。DeepSeek 官方接口启用 JSON 输出模式，并在提示中明确当前允许填写的项目。完整 JSON 或单个代码块中的 JSON 均可解析；多段决策、非法动作不会执行。
+
+网络中断、超时、429/部分 5xx、空回复、截断或无效决策会自动重试一次；每次尝试最多 45 秒，页面等待预算为 100 秒。重试可能额外消耗接口额度，一次决策最多发出两次请求。401（Key）、402（余额）、400/422（参数）等错误直接暂停。失败后保留骰子与计分表，可以手动重试或本回合使用内置人机。
+
+错误提示会显示分类（如 `NETWORK_ERROR`、`EMPTY_CONTENT`、`HTTP_429`）、尝试次数和错误编号。启动窗口仅记录编号、错误分类与次数，不记录 Key、对局内容或原始上游回复。`NETWORK_ERROR` 时需检查本机 Node 服务使用的网络环境；浏览器或 Windows 配置的代理不一定自动作用于 Node。
+
+DeepSeek JSON 输出与空回复说明参考 [官方 JSON Output 文档](https://api-docs.deepseek.com/guides/json_mode/)，HTTP 分类参考 [官方错误码](https://api-docs.deepseek.com/quick_start/error_codes/)。
 
 ## 存档与结构
 

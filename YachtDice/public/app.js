@@ -12,7 +12,7 @@ const participantName=(p,i=game.players.indexOf(p))=>quietView?`方案 ${String.
 function status(title,text){lastStatus=[title,text];$('statusTitle').textContent=quietView?'处理状态':title;$('status').textContent=quietView?quietStatus(text):text;}
 function quietStatus(text){
  // Operational failures remain visible; routine flavor text becomes a neutral instruction.
- if(/失败|超时|尚未配置|无效|限制|检查|最多等待/.test(text))return text.replaceAll('对局','记录').replaceAll('游戏','页面').replaceAll('骰子','数据').replaceAll('模型回合','处理流程');
+ if(/失败|超时|尚未配置|无效|限制|检查|最多等待|\[[A-Z_0-9]+\]/.test(text))return text.replaceAll('对局','记录').replaceAll('游戏','页面').replaceAll('骰子','数据').replaceAll('模型回合','处理流程');
  if(game?.done)return '所有记录已完成，可查看汇总或新建记录。';
  if(game&&!isHuman())return '自动处理进行中，请等待当前记录写入。';
  return game?.rolls?`已采样 ${game.rolls}/3 次。点击数值锁定，选择统计项后确认写入。`:'点击「更新数据」开始当前记录，统计项将显示可写入数值。';
@@ -87,14 +87,18 @@ async function runBot(forceLocal=false){
  try{
   if(p.type==='model'&&!forceLocal){
    if(!config.key||!config.model)throw new Error('尚未配置模型。请在「模型设置」填写 API Key 与模型名称，然后重试。');
-   status('模型正在思考','正在向配置的接口请求决策，最多等待 45 秒。');
-   const response=await fetch('/api/decision',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({config,game}),signal:AbortSignal.timeout(50000)});
-   const data=await response.json();if(!response.ok)throw new Error(data.error||'模型请求失败');action=validateDecision(data.action,game);
+   status('模型正在思考','正在请求决策；临时失败会自动重试一次，最多等待约 95 秒。');
+   const response=await fetch('/api/decision',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({config,game}),signal:AbortSignal.timeout(100000)});
+      let data;
+   try{data=await response.json();}catch{throw new Error('[LOCAL_RESPONSE] 本机服务返回了无效响应，请重启游戏服务后重试。');}
+   if(token!==epoch)return;
+   if(!response.ok)throw new Error(`${data.code?`[${data.code}] `:''}${data.error||'模型请求失败'}${data.attempts>1?'（已尝试两次）':''}${data.requestId?` · 错误编号 ${data.requestId}`:''}`);
+   action=validateDecision(data.action,game);
   }else{await new Promise(r=>setTimeout(r,120));if(token!==epoch)return;action=botDecision(game,p.level||'hard');}
   if(token!==epoch)return;busy=false;
   if(action.type==='score')finishTurn(action.category);
   else{game.held=game.dice.map((_,i)=>action.keep.includes(i));render();status(`${p.name} 保留了 ${action.keep.length} 颗骰子`,'继续掷骰，寻找更好的组合。');await new Promise(r=>setTimeout(r,650));if(token!==epoch)return;await doRoll();if(token===epoch){if(forceLocal)runBot(true);else scheduleBot();}}
- }catch(error){if(token!==epoch)return;busy=false;render();status('模型回合已暂停',error.message||'连接失败，请重试。');$('recovery').hidden=false;}
+ }catch(error){if(token!==epoch)return;busy=false;render();status('模型回合已暂停',['TimeoutError','AbortError'].includes(error.name)?'[LOCAL_TIMEOUT] 等待本机服务超时，请重试；多次超时可重启游戏服务。':error instanceof TypeError?'[LOCAL_NETWORK] 连接本机服务失败，请确认启动窗口仍在运行。':error.message||'连接失败，请重试。');$('recovery').hidden=false;}
 }
 $('retryAI').onclick=()=>runBot();$('fallbackAI').onclick=()=>runBot(true);
 function showResults(){const rank=[...game.players].sort((a,b)=>total(b.sheet)-total(a.sheet));const winners=rank.filter(p=>total(p.sheet)===total(rank[0].sheet));$('winner').textContent=quietView?'记录汇总':game.players.length===1?`本次得分 ${total(rank[0].sheet)}`:`${winners.map(p=>p.name).join('、')}${winners.length>1?' 并列获胜':' 获胜'}`;$('ranking').innerHTML=rank.map(p=>`<div class="rank"><span>${esc(participantName(p))}</span><b>${total(p.sheet)}${quietView?'':' 分'}</b></div>`).join('');if(!$('results').open)$('results').showModal();}

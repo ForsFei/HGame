@@ -2,8 +2,9 @@ import http from 'node:http';
 import {readFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {resolve, extname} from 'node:path';
-import {validateDecision} from './public/engine.js';
-export function makeServer() {
+import {requestDecision,ModelError} from './model-api.mjs';
+import {randomUUID} from 'node:crypto';
+export function makeServer(modelOptions={}) {
  const root=fileURLToPath(new URL('./public/',import.meta.url));
  return http.createServer(async(req,res)=>{
   const send=(status,data)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(data));};
@@ -14,25 +15,22 @@ export function makeServer() {
     let body=''; for await(const chunk of req) {body+=chunk;if(body.length>40000)return send(413,{error:'请求过大'});}
     const {config,game}=JSON.parse(body);
     if(!config?.key || !config?.model || !game?.players?.[game.turn] || !Array.isArray(game.dice) || game.dice.length!==5) return send(400,{error:'请填写 API Key、模型和有效对局'});
-    const endpoint=new URL(config.base.replace(/\/+$/,'')+'/chat/completions');
-    if(endpoint.protocol!=='https:' && !(endpoint.protocol==='http:' && ['127.0.0.1','localhost','[::1]'].includes(endpoint.hostname))) return send(400,{error:'接口必须使用 HTTPS；本机模型可使用 HTTP'});
-    if(endpoint.username || endpoint.password || endpoint.search || endpoint.hash) return send(400,{error:'请填写不含账号、参数的接口基础地址'});
-    const rules='Yacht dice: 5 dice, up to 3 rolls per turn, 12 categories. ones..sixes=sum matching face; upper subtotal>=63 bonus35; choice=sum; four=at least4 equal then sum ALL5; house=exactly3+2 then sum; small=4 consecutive distinct faces 15; large=5 consecutive 30; yacht=5 equal 50. Each category used once. Maximize final score.';
-    const context={dice:game.dice,rollsUsed:game.rolls,players:game.players.map(p=>({name:p.name,sheet:p.sheet})),currentPlayer:game.turn};
-    const tokenLimit=endpoint.hostname==='api.openai.com'||/^(gpt-|o\d)/.test(config.model)?{max_completion_tokens:4096}:{max_tokens:2048};
-    const providerOptions=endpoint.hostname==='api.deepseek.com'?{thinking:{type:'disabled'}}:{};
-    const response=await fetch(endpoint,{method:'POST',signal:AbortSignal.timeout(45000),redirect:'error',headers:{'Content-Type':'application/json','Authorization':`Bearer ${config.key}`},body:JSON.stringify({model:config.model,messages:[{role:'system',content:rules+' Return ONLY JSON: {"type":"roll","keep":[0,2]} (zero-based dice indices to KEEP, fewer than5) or {"type":"score","category":"ones"}. After roll3 you MUST score. Only unfilled categories. No markdown.'},{role:'user',content:JSON.stringify(context)}],...tokenLimit,...providerOptions})});
-    if(!response.ok) return send(502,{error:`模型接口返回 HTTP ${response.status}，请检查地址、模型、余额与 Key`});
-    const data=await response.json(), content=data.choices?.[0]?.message?.content;
-    if(typeof content!=='string') return send(502,{error:'模型未返回文本决策'});
-    const match=content.match(/\{[\s\S]*\}/);if(!match)return send(502,{error:'模型未返回 JSON 决策'});
-    return send(200,{action:validateDecision(JSON.parse(match[0]),game)});
+    const requestId=randomUUID().slice(0,8);
+    try {
+     return send(200,{...await requestDecision(config,game,modelOptions),requestId});
+    } catch(error) {
+     const known=error instanceof ModelError;
+     const code=known?error.code:'INTERNAL_ERROR';
+     // Do not log credentials, upstream bodies, player data, or raw exception messages.
+     console.warn(`[model] ${requestId} ${code} attempts=${error.attempts||1}`);
+     return send(known?error.status:500,{error:known?error.message:'本机模型代理处理失败，请重启服务后重试。',code,attempts:error.attempts||1,requestId});
+    }
    }
    if(req.method!=='GET')return send(405,{error:'不支持的请求'});
    const files={'/':'index.html','/index.html':'index.html','/style.css':'style.css','/app.js':'app.js','/engine.js':'engine.js'};
    const file=files[req.url?.split('?')[0]];if(!file)return send(404,{error:'未找到页面'});
    res.writeHead(200,{'Content-Type':({'.html':'text/html','.js':'text/javascript','.css':'text/css'})[extname(file)]+'; charset=utf-8','Cache-Control':'no-cache','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'});res.end(await readFile(resolve(root,file)));
-  } catch(error) {send(502,{error:error.name==='TimeoutError'?'模型响应超时，请重试':'请求失败：请检查接口配置或模型返回格式'});}
+  } catch {send(400,{error:'请求数据格式无效，请刷新页面后重试。',code:'INVALID_REQUEST'});}
  });
 }
 if(process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url)) {
