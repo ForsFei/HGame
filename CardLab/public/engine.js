@@ -97,6 +97,19 @@ export function preview(state,cards){
  for(const id of state.modules){const factor=id==='echo'&&state.played>=1?1.5:id==='anchor'&&state.discards===0?2:1;if(factor!==1){mult*=factor;steps.push({id,factor});}}
  return {...result,level,chips,mult,baseChips,baseMult,handChips,cardChips,penalty,blocked,points:Math.floor(chips*mult*penalty),steps};
 }
+// Enumerate only visible cards; keep one best candidate per hand type.
+export function suggestHands(s,limit=3){
+ if(s.phase!=='play'||s.hands===0)return [];
+ const hand=[...s.hand].sort((a,b)=>a.id<b.id?-1:a.id>b.id?1:0),best=new Map();
+ const compare=(a,b)=>b.result.points-a.result.points||a.ids.length-b.ids.length||(a.ids.join(',')<b.ids.join(',')?-1:a.ids.join(',')>b.ids.join(',')?1:0);
+ for(let mask=1;mask<1<<hand.length;mask++){
+  const cards=hand.filter((_,i)=>mask>>i&1);if(cards.length>5)continue;
+  const result=preview(s,cards);if(result.blocked)continue;
+  const candidate={ids:cards.map(c=>c.id),result},prior=best.get(result.hand.id);
+  if(!prior||compare(candidate,prior)<0)best.set(result.hand.id,candidate);
+ }
+ return [...best.values()].sort(compare).slice(0,Math.max(0,Math.min(9,Math.trunc(limit)||0)));
+}
 export function startStage(s,rng){
  const profile=deckFor(s),suffix=profile===DECKS.standard?'':`/${s.deckProfile}`;
  rng??=s.seed?seededRng(`${s.seed}/deck/${s.stage}${suffix}`):Math.random;

@@ -1,7 +1,7 @@
-import {HANDS,MODULES,TARGETS,DECKS,DIFFICULTIES,deckFor,difficultyFor,targetFor,stageRule,moduleDescription,rankText,suitText,createSeededGame,preview,play,discard,buyModule,upgrade,sell,reroll,rerollCost,nextStage,validSave} from './engine.js';
+import {HANDS,MODULES,TARGETS,DECKS,DIFFICULTIES,deckFor,difficultyFor,targetFor,stageRule,moduleDescription,rankText,suitText,createSeededGame,preview,suggestHands,play,discard,buyModule,upgrade,sell,reroll,rerollCost,nextStage,validSave} from './engine.js';
 import {recordRun,validRecord} from './records.js';
 const $=id=>document.getElementById(id),fmt=n=>n.toLocaleString('zh-CN'),esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-let state,selected=[],quiet=document.documentElement.dataset.view==='quiet',sort='rank',storageWarning=false,records=[],pendingVersion=5,pendingPurchase=null;
+let state,selected=[],quiet=document.documentElement.dataset.view==='quiet',sort='rank',storageWarning=false,records=[],pendingVersion=5,pendingPurchase=null,suggestionOptions=[];
 try{const data=JSON.parse(localStorage.getItem('cardlab-save'));if(validSave(data))state=data;}catch{}
 state??=createSeededGame();
 state.runId??=crypto.randomUUID();
@@ -52,8 +52,19 @@ function render(){
  renderStageRule();
  if(currentPreview?.blocked)$('preview').insertAdjacentHTML('beforeend',`<p class="blocked">${quiet?'本阶段首次提交需选择 5 项。':'本关第一次出牌必须选择 5 张牌。'}</p>`);
  if(state.last?.handChips!==undefined)$('last').insertAdjacentHTML('beforeend',scoreDetails(state.last));
- renderConfiguration();renderRecords();renderHelp();if($('replaceDialog').open&&pendingPurchase!==null)openReplacement(pendingPurchase);document.documentElement.classList.add('ready');
+ renderSuggestions();renderConfiguration();renderRecords();renderHelp();if($('replaceDialog').open&&pendingPurchase!==null)openReplacement(pendingPurchase);document.documentElement.classList.add('ready');
 }
+function renderSuggestions(){
+ $('suggestionsTitle').textContent=quiet?'组合建议':'出牌建议';
+ if(!$('suggestions').open||state.phase!=='play'){suggestionOptions=[];$('suggestionList').innerHTML='';return;}
+ suggestionOptions=suggestHands(state);
+ $('suggestionsHint').textContent=quiet?'只比较当前样本，每种组合保留最高值，展示前三种。不估算替换或后续收益；应用后需手动提交。':'只看当前手牌，每种牌型保留最高分，展示前三种。不估算弃牌或后续收益；选牌后仍需手动出牌。';
+ const p=selected.length?preview(state,state.hand.filter(c=>selected.includes(c.id))):null,best=suggestionOptions[0]?.result.points;
+ $('suggestionsComparison').textContent=p?(p.blocked?(quiet?'当前选择不满足本阶段首次提交限制。':'当前选择不满足本关首次出牌限制。'):`当前选择 ${fmt(p.points)} · ${quiet?'本次最高':'本手最高'} ${fmt(best)}${best>p.points?` · 可提高 ${fmt(best-p.points)}`:' · 已达本手最高'}`):'先比较建议，也可以继续自己选牌。';
+ $('suggestionList').innerHTML=suggestionOptions.length?suggestionOptions.map((option,i)=>{const p=option.result,remaining=Math.max(0,targetFor(state)-state.score-p.points),cards=option.ids.map(id=>state.hand.find(c=>c.id===id));return `<article class="suggestion"><div class="suggestion-heading"><b>${i+1}. ${name(p.hand)} · ${fmt(p.points)}</b><span>${remaining?`距${quiet?'指标':'目标'} ${fmt(remaining)}`:(quiet?'可达指标':'可直接过关')}</span></div><p>${quiet?'选择样本':'选牌'}：${esc(cards.map(c=>`${quiet?c.suit:suitText(c.suit)}${rankText(c.rank)}`).join(' · '))}</p><p>${fmt(p.chips)} × ${p.mult}${p.penalty!==1?` × ${p.penalty}`:''} = ${fmt(p.points)}</p><button data-suggest="${i}">${quiet?'应用此组合':'选用这手牌'}</button>${scoreDetails(p)}</article>`;}).join(''):'<p class="empty">暂无可提交的组合。</p>';
+}
+$('suggestions').addEventListener('toggle',renderSuggestions);
+$('suggestionList').onclick=e=>{const b=e.target.closest('[data-suggest]');if(!b||state.phase!=='play')return;const option=suggestionOptions[Number(b.dataset.suggest)];if(!option)return;selected=[...option.ids];render();notify(quiet?'已应用建议，请确认后手动提交。':'已选好建议手牌，请确认后手动出牌。');};
 function renderConfiguration(){
  const p=DECKS[$('deckInput').value],d=DIFFICULTIES[$('difficultyInput').value];
  const desc=quiet?`共 ${p.size} 项样本，每阶段 ${p.discards} 次替换。${p===DECKS.trimmed?'不含 2、3。':p===DECKS.numeric?'不含 J/Q/K，配置更新不提供模块 07。':'包含所有类别与数值。'}`:p.desc;
@@ -81,6 +92,7 @@ function renderHelp(){
  $('helpTitle').textContent=quiet?'分析流程说明':'把一手牌，做成一套策略';
  $('helpContent').innerHTML=quiet?'<p>共有 8 阶段，每阶段 4 次提交、3 次替换。点击选择 1–5 项，预览收益后提交；或使用替换机会更新所选样本。</p><p>单值只统计最高值，双值/三值/四值只统计对应重复项；双组统计两组重复项；其余组合统计全部五项。A=11，J/Q/K=10。</p><p>组合基础值与模块加成累加后乘以系数。模块乘法最后处理。达到指标即可配置模块，未达指标且次数耗尽则结束。</p><p>每阶段收入 = 5 + 剩余提交次数 + 资金收益（每 $5 提供 $1，最多 $5）。最多持有 5 个模块，配置阶段可出售。升级效果持续整次记录。</p><p>Alt+M 切换视图，自动保存本次记录。页面为本地分析视图，不会隐藏浏览器地址或历史。</p>':'<p>这是一款原创扑克构筑小游戏：用有限的出牌次数达到目标，关间购买效果模块，挑战全部 8 关。</p><p>每关抽 8 张牌，最多出牌 4 次、弃牌 3 次。选 1–5 张后可以出牌或弃掉补牌。出牌前会显示准确分数。每关开始重新洗一副 52 张牌，不含大小王；支持 A2345 顺子。</p><p>高牌只计最高一张；一对、两对、三条、四条只计构成牌型的牌；顺子、同花、葫芦、同花顺计全部五张。A 计 11，J/Q/K 计 10。只看所选牌，不自动从超出五张的牌中挑选。</p><p>得分 =（牌型筹码 + 计分牌点数 + 模块筹码）×（牌型倍率 + 模块倍率），再结算乘法模块，向下取整。升级牌型永久增加本局该牌型的筹码与倍率。</p><p>过关收入 = $5 + 剩余出牌次数 + 利息（当前资金每 $5 提供 $1，最多 $5）。商店最多持有 5 个模块，可以出售换位；刷新整组商品花费 $3。每一关单独累计分数。</p><p>Alt+M 切换简洁视图。进度自动保存在当前浏览器；新建一局会覆盖存档。全程离线，无需付费或 API Key。</p>';
  $('helpContent').innerHTML=$('helpContent').innerHTML.replace('每阶段 4 次提交、3 次替换',`每阶段 4 次提交、${deckFor(state).discards} 次替换`).replace('最多出牌 4 次、弃牌 3 次',`最多出牌 4 次、弃牌 ${deckFor(state).discards} 次`).replace('每关开始重新洗一副 52 张牌',`每关开始重新洗一副 ${deckFor(state).size} 张牌`).replace('支持 A2345 顺子',deckFor(state)===DECKS.trimmed?'本牌组不含 2、3，无法组成 A2345 顺子':'支持 A2345 顺子');
+ $('helpContent').insertAdjacentHTML('beforeend',`<p>${quiet?'组合建议':'出牌建议'}默认收起，展开后比较当前手中全部 1–5 项合法组合，每种类型保留最高分，最多展示三种。建议会考虑模块、等级和阶段规则，但不计算替换后的概率或后续收益。应用只改变当前选择，仍需手动提交。</p>`);
  $('helpContent').insertAdjacentHTML('beforeend',`<p>${state.version>=5?'v5 整局首次刷新免费，使用后每次 $3；免费次数跨阶段保存。':'此历史版本每次刷新 $3。'}模块满 5 个时，可以选择替换购买；旧模块按卖价抵扣，确认后一次完成交易，取消不会扣款。</p>`);
  $('helpContent').insertAdjacentHTML('beforeend',`<p>当前配置：${quiet?deckFor(state).quiet:deckFor(state).name}，${difficultyFor(state).name}。${quiet?'阶段指标':'过关目标'}为基础目标的 ${Math.round(difficultyFor(state).scale*100)}%。精简配置不含 2/3；数值配置不含 J/Q/K，每阶段只可替换 2 次，也不会提供模块 07。历史记录可以按配置筛选，再次挑战会恢复原有配置。</p>`);
  $('helpContent').insertAdjacentHTML('beforeend','<p>新版第 3 阶段：H/D 类计入项的点数归零，模块仍触发；第 6 阶段：首次提交需选满 5 项；第 8 阶段：重复组合的最终结果乘 0.5。配置阶段会预告下一阶段规则。旧版存档保持经典规则直到结束。预览和上一手均可展开计算明细。</p>');
