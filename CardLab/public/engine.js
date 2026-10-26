@@ -1,3 +1,4 @@
+import {newRecap,logPlay,logDiscard,logTransaction,validRecap} from './recap.js';
 export const HANDS=[
  {id:'high',name:'高牌',base:5,mult:1,up:10},
  {id:'pair',name:'一对',base:10,mult:2,up:15},
@@ -106,7 +107,7 @@ export function createGame(rng=Math.random){const s={version:2,stage:0,money:6,m
 export function createSeededGame(seed=randomSeed(),{deckProfile='standard',difficulty='normal',version=5}={}){
  if(![3,4,5].includes(version)||!Object.hasOwn(DECKS,deckProfile)||!Object.hasOwn(DIFFICULTIES,difficulty))throw Error('牌组或难度配置无效');
  if(version===3&&(deckProfile!=='standard'||difficulty!=='normal'))throw Error('旧版记录仅支持经典牌组与标准难度');
- const s=createGame(()=>0);s.version=version;if(version>=5)s.freeRerollUsed=false;s.deckProfile=deckProfile;s.difficulty=difficulty;s.seed=normalizeSeed(seed);s.runId=globalThis.crypto?.randomUUID?.()||`${Date.now()}-${randomSeed()}`;s.startedAt=new Date().toISOString();s.bestHand=0;startStage(s);return s;
+ const s=createGame(()=>0);s.version=version;if(version>=5)s.freeRerollUsed=false;s.deckProfile=deckProfile;s.difficulty=difficulty;s.seed=normalizeSeed(seed);s.runId=globalThis.crypto?.randomUUID?.()||`${Date.now()}-${randomSeed()}`;s.startedAt=new Date().toISOString();s.bestHand=0;s.recap=newRecap();startStage(s);return s;
 }
 function selectedCards(s,ids){
  if(s.phase!=='play')throw Error('当前不在出牌阶段');
@@ -129,9 +130,10 @@ export function play(s,ids,rng){
   s.history.unshift({stage:s.stage+1,score:s.score,target:targetFor(s),reward});s.last.reward=reward;
   s.phase=s.stage===7?'won':'shop';if(s.phase==='shop')makeShop(s,rng);
  }else if(s.hands===0)s.phase='lost';
+ logPlay(s,p,targetFor(s));
  return p;
 }
-export function discard(s,ids){selectedCards(s,ids);if(s.discards===0)throw Error('弃牌机会已用完');s.discards--;replaceCards(s,ids);}
+export function discard(s,ids){selectedCards(s,ids);if(s.discards===0)throw Error('弃牌机会已用完');s.discards--;replaceCards(s,ids);logDiscard(s,targetFor(s));}
 export function buyModule(s,index,replaceId){
  const offer=s.shop?.modules[index],m=MODULES.find(m=>m.id===offer?.id);
  if(s.phase!=='shop'||!m||offer.bought)throw Error('商品不可购买');
@@ -139,16 +141,17 @@ export function buyModule(s,index,replaceId){
  let refund=0,slot=-1;
  if(replaceId!==undefined){slot=s.modules.indexOf(replaceId);if(slot<0)throw Error('替换的模块不存在');refund=Math.floor(MODULES.find(m=>m.id===replaceId).price/2);}
  if(slot<0&&s.modules.length>=5)throw Error('模块已满，请选择替换一个模块');if(s.money+refund<m.price)throw Error('资金不足');
- s.money+=refund-m.price;if(slot>=0)s.modules.splice(slot,1,m.id);else s.modules.push(m.id);offer.bought=true;
+ s.money+=refund-m.price;if(slot>=0)s.modules.splice(slot,1,m.id);else s.modules.push(m.id);offer.bought=true;logTransaction(s,{type:slot>=0?'replace':'buy',moduleId:m.id,...(slot>=0?{replacedId:replaceId}:{}),cost:m.price,refund},targetFor(s));
 }
-export function upgrade(s,index){const offer=s.shop?.upgrades[index];if(s.phase!=='shop'||!offer||offer.bought)throw Error('升级不可购买');if(s.money<5)throw Error('资金不足');s.money-=5;s.levels[offer.id]++;offer.bought=true;}
-export function sell(s,id){if(s.phase!=='shop'||!s.modules.includes(id))throw Error('只能在商店出售已有模块');s.modules=s.modules.filter(m=>m!==id);s.money+=Math.floor(MODULES.find(m=>m.id===id).price/2);}
+export function upgrade(s,index){const offer=s.shop?.upgrades[index];if(s.phase!=='shop'||!offer||offer.bought)throw Error('升级不可购买');if(s.money<5)throw Error('资金不足');s.money-=5;s.levels[offer.id]++;offer.bought=true;logTransaction(s,{type:'upgrade',handId:offer.id,cost:5,refund:0},targetFor(s));}
+export function sell(s,id){if(s.phase!=='shop'||!s.modules.includes(id))throw Error('只能在商店出售已有模块');s.modules=s.modules.filter(m=>m!==id);const refund=Math.floor(MODULES.find(m=>m.id===id).price/2);s.money+=refund;logTransaction(s,{type:'sell',moduleId:id,cost:0,refund},targetFor(s));}
 export const rerollCost=s=>s.version>=5&&!s.freeRerollUsed?0:3;
-export function reroll(s,rng){const cost=rerollCost(s);if(s.phase!=='shop'||s.money<cost)throw Error('刷新需要 $3');s.money-=cost;if(s.version>=5)s.freeRerollUsed=true;const n=s.shop.rerolls+1;makeShop(s,rng);s.shop.rerolls=n;}
+export function reroll(s,rng){const cost=rerollCost(s);if(s.phase!=='shop'||s.money<cost)throw Error('刷新需要 $3');s.money-=cost;if(s.version>=5)s.freeRerollUsed=true;const n=s.shop.rerolls+1;makeShop(s,rng);s.shop.rerolls=n;logTransaction(s,{type:'reroll',cost,refund:0},targetFor(s));}
 export function nextStage(s,rng){if(s.phase!=='shop'||s.stage>=7)throw Error('不能进入下一阶段');s.stage++;s.shop=null;startStage(s,rng);}
 export function validSave(s){
  if(!s||![1,2,3,4,5].includes(s.version)||!['play','shop','won','lost'].includes(s.phase)||!Number.isInteger(s.stage)||s.stage<0||s.stage>7)return false;
  if(s.version>=5&&typeof s.freeRerollUsed!=='boolean')return false;
+ if(s.recap!==undefined&&!validRecap(s.recap))return false;
  if(s.version>=4&&(!Object.hasOwn(DECKS,s.deckProfile)||!Object.hasOwn(DIFFICULTIES,s.difficulty)))return false;
  if(s.version>=2&&(!Array.isArray(s.usedHands)||s.usedHands.length!==s.played||!s.usedHands.every(id=>HANDS.some(h=>h.id===id))))return false;
  if(s.version>=3&&(!/^[A-Z0-9-]{1,24}$/.test(s.seed)||typeof s.runId!=='string'||!s.runId||!Number.isFinite(Date.parse(s.startedAt))||!Number.isInteger(s.shopGeneration)||s.shopGeneration<0||!Number.isInteger(s.bestHand)||s.bestHand<0))return false;
