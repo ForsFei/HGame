@@ -26,6 +26,12 @@ export const MODULES=[
  {id:'anchor',name:'定锚',price:8,desc:'不再有弃牌机会时，最终倍率 ×2。'}
 ];
 export const TARGETS=[150,300,500,800,1200,1800,2800,4200];
+export const STAGE_RULES={
+ 2:{id:'redZero',name:'褪色',desc:'红桃、方块的计分牌点数归零；仍参与牌型判定并触发模块。'},
+ 5:{id:'fullOpening',name:'满手开局',desc:'本关第一次出牌必须选择 5 张；之后不限制。弃牌不受影响。'},
+ 7:{id:'variety',name:'变奏',desc:'本关已使用过的牌型再次出牌时，最终得分 ×0.5，向下取整。'}
+};
+export const stageRule=s=>s.version>=2?STAGE_RULES[s.stage]??null:null;
 export const cardValue=c=>c.rank===14?11:Math.min(c.rank,10);
 export const rankText=r=>({11:'J',12:'Q',13:'K',14:'A'})[r]||String(r);
 export const suitText=s=>({S:'♠',H:'♥',C:'♣',D:'♦'})[s];
@@ -49,7 +55,11 @@ export function evaluate(cards){
 }
 export function preview(state,cards){
  const result=evaluate(cards),level=state.levels[result.hand.id],steps=[];
- let chips=result.hand.base+(level-1)*result.hand.up+result.scoring.reduce((s,c)=>s+cardValue(c),0),mult=result.hand.mult+level-1;
+ const rule=stageRule(state),handChips=result.hand.base+(level-1)*result.hand.up;
+ const cardChips=result.scoring.reduce((s,c)=>s+(rule?.id==='redZero'&&['H','D'].includes(c.suit)?0:cardValue(c)),0);
+ const blocked=rule?.id==='fullOpening'&&state.played===0&&cards.length!==5;
+ const penalty=rule?.id==='variety'&&state.usedHands.includes(result.hand.id)?0.5:1;
+ let chips=handChips+cardChips,mult=result.hand.mult+level-1;
  const baseChips=chips,baseMult=mult;
  for(const id of state.modules){
   let addChips=0,addMult=0;
@@ -71,13 +81,13 @@ export function preview(state,cards){
  }
  // All additive effects resolve before multiplier effects, regardless of slot order.
  for(const id of state.modules){const factor=id==='echo'&&state.played>=1?1.5:id==='anchor'&&state.discards===0?2:1;if(factor!==1){mult*=factor;steps.push({id,factor});}}
- return {...result,level,chips,mult,baseChips,baseMult,points:Math.floor(chips*mult),steps};
+ return {...result,level,chips,mult,baseChips,baseMult,handChips,cardChips,penalty,blocked,points:Math.floor(chips*mult*penalty),steps};
 }
 export function startStage(s,rng=Math.random){
  s.deck=shuffled(['S','H','C','D'].flatMap(suit=>Array.from({length:13},(_,i)=>({id:`${suit}${i+2}`,rank:i+2,suit}))),rng);
- s.hand=s.deck.splice(0,8);s.score=0;s.hands=4;s.discards=3;s.played=0;s.phase='play';s.last=null;
+ s.hand=s.deck.splice(0,8);s.score=0;s.hands=4;s.discards=3;s.played=0;s.phase='play';s.last=null;s.usedHands=[];
 }
-export function createGame(rng=Math.random){const s={version:1,stage:0,money:6,modules:[],levels:Object.fromEntries(HANDS.map(h=>[h.id,1])),history:[],phase:'play',shop:null};startStage(s,rng);return s;}
+export function createGame(rng=Math.random){const s={version:2,stage:0,money:6,modules:[],levels:Object.fromEntries(HANDS.map(h=>[h.id,1])),history:[],phase:'play',shop:null};startStage(s,rng);return s;}
 function selectedCards(s,ids){
  if(s.phase!=='play')throw Error('当前不在出牌阶段');
  if(!Array.isArray(ids)||ids.length<1||ids.length>5||new Set(ids).size!==ids.length||ids.some(id=>!s.hand.some(c=>c.id===id)))throw Error('请选择手中的 1–5 张牌');
@@ -88,7 +98,9 @@ export function makeShop(s,rng=Math.random){
  s.shop={modules:shuffled(MODULES.filter(m=>!s.modules.includes(m.id)),rng).slice(0,3).map(m=>({id:m.id,bought:false})),upgrades:shuffled(HANDS,rng).slice(0,2).map(h=>({id:h.id,bought:false})),rerolls:0};
 }
 export function play(s,ids,rng=Math.random){
- const p=preview(s,selectedCards(s,ids));s.hands--;s.played++;s.score+=p.points;s.last={name:p.hand.name,points:p.points,chips:p.chips,mult:p.mult,steps:p.steps};replaceCards(s,ids);
+ const p=preview(s,selectedCards(s,ids));if(p.blocked)throw Error('本关首次出牌必须选择 5 张牌。');
+ s.hands--;s.played++;s.score+=p.points;s.usedHands??=[];s.usedHands.push(p.hand.id);
+ s.last={name:p.hand.name,handId:p.hand.id,points:p.points,chips:p.chips,mult:p.mult,steps:p.steps,handChips:p.handChips,cardChips:p.cardChips,baseMult:p.baseMult,penalty:p.penalty,cards:p.scoring.map(c=>({...c}))};replaceCards(s,ids);
  if(s.score>=TARGETS[s.stage]){
   const interest=Math.min(5,Math.floor(s.money/5)),reward=5+s.hands+interest;s.money+=reward;
   s.history.unshift({stage:s.stage+1,score:s.score,target:TARGETS[s.stage],reward});s.last.reward=reward;
@@ -108,7 +120,8 @@ export function sell(s,id){if(s.phase!=='shop'||!s.modules.includes(id))throw Er
 export function reroll(s,rng=Math.random){if(s.phase!=='shop'||s.money<3)throw Error('刷新需要 $3');s.money-=3;const n=s.shop.rerolls+1;makeShop(s,rng);s.shop.rerolls=n;}
 export function nextStage(s,rng=Math.random){if(s.phase!=='shop'||s.stage>=7)throw Error('不能进入下一阶段');s.stage++;s.shop=null;startStage(s,rng);}
 export function validSave(s){
- if(!s||s.version!==1||!['play','shop','won','lost'].includes(s.phase)||!Number.isInteger(s.stage)||s.stage<0||s.stage>7)return false;
+ if(!s||![1,2].includes(s.version)||!['play','shop','won','lost'].includes(s.phase)||!Number.isInteger(s.stage)||s.stage<0||s.stage>7)return false;
+ if(s.version===2&&(!Array.isArray(s.usedHands)||s.usedHands.length!==s.played||!s.usedHands.every(id=>HANDS.some(h=>h.id===id))))return false;
  if(!['score','money','hands','discards','played'].every(k=>Number.isInteger(s[k])&&s[k]>=0)||s.hands>4||s.discards>3||s.played>4||s.hands+s.played!==4)return false;
  if(!Array.isArray(s.hand)||s.hand.length>8||!Array.isArray(s.deck)||!Array.isArray(s.modules)||s.modules.length>5||new Set(s.modules).size!==s.modules.length||s.modules.some(id=>!MODULES.some(m=>m.id===id)))return false;
  const cards=[...s.hand,...s.deck];if(new Set(cards.map(c=>c?.id)).size!==cards.length||!cards.every(c=>c&&['S','H','C','D'].includes(c.suit)&&Number.isInteger(c.rank)&&c.rank>=2&&c.rank<=14&&c.id===`${c.suit}${c.rank}`))return false;

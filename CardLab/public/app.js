@@ -1,4 +1,4 @@
-import {HANDS,MODULES,TARGETS,rankText,suitText,createGame,preview,play,discard,buyModule,upgrade,sell,reroll,nextStage,validSave} from './engine.js';
+import {HANDS,MODULES,TARGETS,stageRule,rankText,suitText,createGame,preview,play,discard,buyModule,upgrade,sell,reroll,nextStage,validSave} from './engine.js';
 const $=id=>document.getElementById(id),fmt=n=>n.toLocaleString('zh-CN'),esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let state,selected=[],quiet=document.documentElement.dataset.view==='quiet',sort='rank',storageWarning=false;
 try{const data=JSON.parse(localStorage.getItem('cardlab-save'));if(validSave(data))state=data;}catch{}
@@ -21,12 +21,14 @@ function render(){
  $('hands').textContent=`${quiet?'提交':'出牌'} ${state.hands} / 4`;$('discards').textContent=`${quiet?'替换':'弃牌'} ${state.discards} / 3`;$('deck').textContent=`${quiet?'待取样本':'牌堆'} ${state.deck.length}`;$('money').textContent=`$${state.money}`;
  $('slots').textContent=`${state.modules.length} / 5`;
  $('modules').innerHTML=state.modules.length?state.modules.map(id=>{const m=MODULES.find(m=>m.id===id);return `<article class="module"><span class="module-mark">${quiet?'M':'✦'}</span><div><b>${moduleName(m)}</b><p>${terminology(m.desc)}</p></div>${state.phase==='shop'?`<button data-sell="${id}">出售 $${Math.floor(m.price/2)}</button>`:''}</article>`;}).join(''):`<div class="empty">${quiet?'暂无策略模块。完成阶段后可配置。':'还没有效果模块。通过第一关，在商店构筑你的策略。'}</div>`;
+ const currentPreview=selected.length&&state.phase==='play'?preview(state,state.hand.filter(c=>selected.includes(c.id))):null;
+ const scoringIds=currentPreview?.scoring.map(c=>c.id)||[];
  const hand=[...state.hand].sort((a,b)=>sort==='rank'?b.rank-a.rank||a.suit.localeCompare(b.suit):a.suit.localeCompare(b.suit)||b.rank-a.rank);
- $('cards').innerHTML=hand.map(c=>`<button class="card ${['H','D'].includes(c.suit)?'red':''} ${selected.includes(c.id)?'selected':''}" data-card="${c.id}" aria-pressed="${selected.includes(c.id)}" aria-label="${quiet?c.suit:suitText(c.suit)} ${rankText(c.rank)}" ${state.phase!=='play'?'disabled':''}><span class="card-corner">${quiet?c.suit:rankText(c.rank)}<small>${quiet?'':suitText(c.suit)}</small></span><span class="card-center">${quiet?rankText(c.rank):suitText(c.suit)}</span><span class="card-bottom">${quiet?'样本':rankText(c.rank)}</span></button>`).join('');
+ $('cards').innerHTML=hand.map(c=>`<button class="card ${['H','D'].includes(c.suit)?'red':''} ${selected.includes(c.id)?'selected':''}" data-counted="${selected.includes(c.id)?scoringIds.includes(c.id):''}" data-card="${c.id}" aria-pressed="${selected.includes(c.id)}" aria-label="${quiet?c.suit:suitText(c.suit)} ${rankText(c.rank)}" ${state.phase!=='play'?'disabled':''}><span class="card-corner">${quiet?c.suit:rankText(c.rank)}<small>${quiet?'':suitText(c.suit)}</small></span><span class="card-center">${quiet?rankText(c.rank):suitText(c.suit)}</span><span class="card-bottom">${quiet?'样本':rankText(c.rank)}</span>${selected.includes(c.id)?`<span class="counted-label">${scoringIds.includes(c.id)?(quiet?'计入':'计分'):(quiet?'不计入':'不计分')}</span>`:''}</button>`).join('');
  $('selectedCount').textContent=quiet?`已选 ${selected.length}/5 项`:`已选 ${selected.length}/5 张`;
  const playing=state.phase==='play';$('playArea').hidden=!playing;$('shop').hidden=state.phase!=='shop';$('ending').hidden=!['won','lost'].includes(state.phase);
- $('play').disabled=!playing||!selected.length;$('discard').disabled=!playing||!selected.length||state.discards===0;$('clear').disabled=!selected.length;
- if(selected.length&&playing){const p=preview(state,state.hand.filter(c=>selected.includes(c.id)));$('preview').innerHTML=`<div><span class="preview-label">${quiet?'预计结果':'本手预览'}</span><b>${name(p.hand)} <small>Lv.${p.level}</small></b></div><div class="formula"><span>${fmt(p.chips)}</span> × <span>${p.mult}</span> = <strong>${fmt(p.points)}</strong></div><p>${p.steps.length?p.steps.map(s=>{const m=MODULES.find(m=>m.id===s.id);return `${moduleName(m)} ${s.factor?'×'+s.factor:s.chips?'+'+s.chips+(quiet?' 基础值':' 筹码'):'+'+s.mult+(quiet?' 系数':' 倍率')}`;}).join(' · '):(quiet?'当前无策略加成':'选择组合，效果模块会自动结算。')}</p>`;}
+ $('play').disabled=!playing||!selected.length||Boolean(currentPreview?.blocked);$('discard').disabled=!playing||!selected.length||state.discards===0;$('clear').disabled=!selected.length;
+ if(selected.length&&playing){const p=currentPreview;$('preview').innerHTML=`<div><span class="preview-label">${quiet?'预计结果':'本手预览'}</span><b>${name(p.hand)} <small>Lv.${p.level}</small></b></div><div class="formula"><span>${fmt(p.chips)}</span> × <span>${p.mult}</span> ${p.penalty!==1?` × ${p.penalty}`:''} = <strong>${fmt(p.points)}</strong></div><p>${p.steps.length?p.steps.map(s=>{const m=MODULES.find(m=>m.id===s.id);return `${moduleName(m)} ${s.factor?'×'+s.factor:s.chips?'+'+s.chips+(quiet?' 基础值':' 筹码'):'+'+s.mult+(quiet?' 系数':' 倍率')}`;}).join(' · '):(quiet?'当前无策略加成':'选择组合，效果模块会自动结算。')}</p>${scoreDetails(p)}`;}
  else $('preview').innerHTML=`<div><span class="preview-label">${quiet?'组合分析':'本手预览'}</span><b>${quiet?'请选择 1–5 项样本':'请选择 1–5 张手牌'}</b></div><div class="formula muted">— × —</div><p>${quiet?'数值结果会在提交前显示。':'只有构成牌型的牌参与计分；高牌只计最高的一张。'}</p>`;
  $('reference').innerHTML=[...HANDS].reverse().map(h=>{const l=state.levels[h.id];return `<div class="reference-row"><b>${name(h)} <small>Lv.${l}</small></b><span>${h.base+(l-1)*h.up} × ${h.mult+l-1}</span></div>`;}).join('');
  $('scoringHint').textContent=quiet?'基础值 = 组合基础 + 参与项数值 + 模块加成。先累计加法，再结算乘法。': '筹码 = 牌型基础 + 计分牌点数 + 模块加成。A 计 11，J/Q/K 计 10；先加后乘，最终分数向下取整。';
@@ -36,7 +38,22 @@ function render(){
  $('endingText').textContent=state.phase==='won'?`最终${quiet?'累计':'得分'} ${fmt(state.score)}，剩余资金 $${state.money}。`:`${quiet?'累计':'得分'} ${fmt(state.score)} / ${fmt(TARGETS[state.stage])}。${quiet?'可新建记录再次分析。':'试试更集中地升级一个牌型，或组合能互相配合的模块。'}`;
  $('last').textContent=state.last?`${quiet?'最近提交':'上一手'}：${quiet?'组合':state.last.name} · ${state.last.chips} × ${state.last.mult} = ${fmt(state.last.points)}${state.last.reward?` · 阶段收入 $${state.last.reward}`:''}`:'';
  $('notice').textContent=storageWarning?'浏览器存储不可用，本次进度无法自动保存。':'';
+ renderStageRule();
+ if(currentPreview?.blocked)$('preview').insertAdjacentHTML('beforeend',`<p class="blocked">${quiet?'本阶段首次提交需选择 5 项。':'本关第一次出牌必须选择 5 张牌。'}</p>`);
+ if(state.last?.handChips!==undefined)$('last').insertAdjacentHTML('beforeend',scoreDetails(state.last));
  renderHelp();document.documentElement.classList.add('ready');
+}
+function scoreDetails(p){
+ const rows=[[quiet?'组合基础值':'牌型筹码',p.handChips],[quiet?'计入样本数值':'计分牌点数',p.cardChips],[quiet?'初始系数':'基础倍率',p.baseMult]];
+ for(const step of p.steps||[]){const m=MODULES.find(m=>m.id===step.id);if(m)rows.push([moduleName(m),step.factor?`倍率 ×${step.factor}`:`筹码 +${step.chips} / 倍率 +${step.mult}`]);}
+ if(p.penalty!==1)rows.push(['阶段调整',`最终结果 ×${p.penalty}`]);
+ const scoring=p.scoring||p.cards||[];
+ return `<details class="breakdown"><summary>${quiet?'计算明细':'结算明细'}</summary>${scoring.length?`<p>${quiet?'计入项':'计分牌'}：${esc(scoring.map(c=>`${quiet?c.suit:suitText(c.suit)}${rankText(c.rank)}`).join(' · '))}</p>`:''}${rows.map(([k,v])=>`<div><span>${esc(k)}</span><b>${esc(terminology(String(v)))}</b></div>`).join('')}${p.blocked?'<p class="blocked">首次提交需选择 5 项；当前组合不能提交。</p>':''}<div><span>最终结果（向下取整）</span><b>${fmt(p.points)}</b></div></details>`;
+}
+function renderStageRule(){
+ const next=state.phase==='shop',s=next?{...state,stage:state.stage+1}:state,r=stageRule(s);
+ const quietDesc={redZero:'H/D 类计入项的数值归零；仍参与分类并触发策略模块。',fullOpening:'本阶段首次提交必须选满 5 项，之后不限制。替换不受影响。',variety:'本阶段重复使用的组合类型，最终结果乘 0.5，向下取整。'};
+ $('stageRule').innerHTML=`<b>${next?'下一阶段':'当前阶段'} · ${r?(quiet?`约束 ${r.id==='redZero'?'01':r.id==='fullOpening'?'02':'03'}`:r.name):(state.version===1?'经典规则':'常规规则')}</b><p>${r?esc(quiet?quietDesc[r.id]:r.desc):(state.version===1?'此存档沿用旧版规则，新建记录后启用特殊阶段。':'第 3 阶段：红色点数归零；第 6 阶段：首次选满五项；第 8 阶段：重复组合收益减半。')}</p>`;
 }
 function renderShop(){
  $('shopHint').textContent=quiet?'最多配置 5 个模块。提交次数将在下一阶段重置；未花资金每 $5 提供 $1 收益（上限 $5）。':'最多持有 5 个效果模块。每关重洗 52 张牌，恢复 4 次出牌与 3 次弃牌。保留资金可获得利息。';
@@ -47,6 +64,7 @@ function renderShop(){
 function renderHelp(){
  $('helpTitle').textContent=quiet?'分析流程说明':'把一手牌，做成一套策略';
  $('helpContent').innerHTML=quiet?'<p>共有 8 阶段，每阶段 4 次提交、3 次替换。点击选择 1–5 项，预览收益后提交；或使用替换机会更新所选样本。</p><p>单值只统计最高值，双值/三值/四值只统计对应重复项；双组统计两组重复项；其余组合统计全部五项。A=11，J/Q/K=10。</p><p>组合基础值与模块加成累加后乘以系数。模块乘法最后处理。达到指标即可配置模块，未达指标且次数耗尽则结束。</p><p>每阶段收入 = 5 + 剩余提交次数 + 资金收益（每 $5 提供 $1，最多 $5）。最多持有 5 个模块，配置阶段可出售。升级效果持续整次记录。</p><p>Alt+M 切换视图，自动保存本次记录。页面为本地分析视图，不会隐藏浏览器地址或历史。</p>':'<p>这是一款原创扑克构筑小游戏：用有限的出牌次数达到目标，关间购买效果模块，挑战全部 8 关。</p><p>每关抽 8 张牌，最多出牌 4 次、弃牌 3 次。选 1–5 张后可以出牌或弃掉补牌。出牌前会显示准确分数。每关开始重新洗一副 52 张牌，不含大小王；支持 A2345 顺子。</p><p>高牌只计最高一张；一对、两对、三条、四条只计构成牌型的牌；顺子、同花、葫芦、同花顺计全部五张。A 计 11，J/Q/K 计 10。只看所选牌，不自动从超出五张的牌中挑选。</p><p>得分 =（牌型筹码 + 计分牌点数 + 模块筹码）×（牌型倍率 + 模块倍率），再结算乘法模块，向下取整。升级牌型永久增加本局该牌型的筹码与倍率。</p><p>过关收入 = $5 + 剩余出牌次数 + 利息（当前资金每 $5 提供 $1，最多 $5）。商店最多持有 5 个模块，可以出售换位；刷新整组商品花费 $3。每一关单独累计分数。</p><p>Alt+M 切换简洁视图。进度自动保存在当前浏览器；新建一局会覆盖存档。全程离线，无需付费或 API Key。</p>';
+ $('helpContent').insertAdjacentHTML('beforeend','<p>新版第 3 阶段：H/D 类计入项的点数归零，模块仍触发；第 6 阶段：首次提交需选满 5 项；第 8 阶段：重复组合的最终结果乘 0.5。配置阶段会预告下一阶段规则。旧版存档保持经典规则直到结束。预览和上一手均可展开计算明细。</p>');
 }
 $('cards').onclick=e=>{const card=e.target.closest('[data-card]');if(!card||state.phase!=='play')return;const id=card.dataset.card;if(selected.includes(id))selected=selected.filter(x=>x!==id);else if(selected.length<5)selected.push(id);else return notify(quiet?'最多选择 5 项':'最多选择 5 张牌');render();};
 $('clear').onclick=()=>{selected=[];render();};$('sortRank').onclick=()=>{sort='rank';render();};$('sortSuit').onclick=()=>{sort='suit';render();};
