@@ -26,6 +26,15 @@ export const MODULES=[
  {id:'anchor',name:'定锚',price:8,desc:'不再有弃牌机会时，最终倍率 ×2。'}
 ];
 export const TARGETS=[150,300,500,800,1200,1800,2800,4200];
+export const DECKS={
+ standard:{name:'经典牌组',quiet:'完整样本',size:52,discards:3,desc:'完整 52 张牌，每阶段 3 次弃牌，适合熟悉全部模块。',ranks:Array.from({length:13},(_,i)=>i+2)},
+ trimmed:{name:'精简牌组',quiet:'精简样本',size:44,discards:3,desc:'移除所有 2、3，共 44 张牌；每阶段 3 次弃牌。高点数更集中，低位顺子不再可用。',ranks:Array.from({length:11},(_,i)=>i+4)},
+ numeric:{name:'数字牌组',quiet:'数值样本',size:40,discards:2,desc:'移除 J、Q、K，保留 A 与 2–10，共 40 张牌；每阶段只有 2 次弃牌，商店不出售肖像收藏。',ranks:[2,3,4,5,6,7,8,9,10,14]}
+};
+export const DIFFICULTIES={relaxed:{name:'休闲',scale:0.8},normal:{name:'标准',scale:1},expert:{name:'挑战',scale:1.3}};
+export const deckFor=s=>DECKS[s.version>=4?s.deckProfile:'standard'];
+export const difficultyFor=s=>DIFFICULTIES[s.version>=4?s.difficulty:'normal'];
+export const targetFor=s=>Math.round(TARGETS[s.stage]*difficultyFor(s).scale);
 export const STAGE_RULES={
  2:{id:'redZero',name:'褪色',desc:'红桃、方块的计分牌点数归零；仍参与牌型判定并触发模块。'},
  5:{id:'fullOpening',name:'满手开局',desc:'本关第一次出牌必须选择 5 张；之后不限制。弃牌不受影响。'},
@@ -88,13 +97,16 @@ export function preview(state,cards){
  return {...result,level,chips,mult,baseChips,baseMult,handChips,cardChips,penalty,blocked,points:Math.floor(chips*mult*penalty),steps};
 }
 export function startStage(s,rng){
- rng??=s.seed?seededRng(`${s.seed}/deck/${s.stage}`):Math.random;
- s.deck=shuffled(['S','H','C','D'].flatMap(suit=>Array.from({length:13},(_,i)=>({id:`${suit}${i+2}`,rank:i+2,suit}))),rng);
- s.hand=s.deck.splice(0,8);s.score=0;s.hands=4;s.discards=3;s.played=0;s.phase='play';s.last=null;s.usedHands=[];s.shopGeneration=0;
+ const profile=deckFor(s),suffix=profile===DECKS.standard?'':`/${s.deckProfile}`;
+ rng??=s.seed?seededRng(`${s.seed}/deck/${s.stage}${suffix}`):Math.random;
+ s.deck=shuffled(['S','H','C','D'].flatMap(suit=>profile.ranks.map(rank=>({id:`${suit}${rank}`,rank,suit}))),rng);
+ s.hand=s.deck.splice(0,8);s.score=0;s.hands=4;s.discards=profile.discards;s.played=0;s.phase='play';s.last=null;s.usedHands=[];s.shopGeneration=0;
 }
 export function createGame(rng=Math.random){const s={version:2,stage:0,money:6,modules:[],levels:Object.fromEntries(HANDS.map(h=>[h.id,1])),history:[],phase:'play',shop:null};startStage(s,rng);return s;}
-export function createSeededGame(seed=randomSeed()){
- const s=createGame(()=>0);s.version=3;s.seed=normalizeSeed(seed);s.runId=globalThis.crypto?.randomUUID?.()||`${Date.now()}-${randomSeed()}`;s.startedAt=new Date().toISOString();s.bestHand=0;startStage(s);return s;
+export function createSeededGame(seed=randomSeed(),{deckProfile='standard',difficulty='normal',version=4}={}){
+ if(![3,4].includes(version)||!Object.hasOwn(DECKS,deckProfile)||!Object.hasOwn(DIFFICULTIES,difficulty))throw Error('牌组或难度配置无效');
+ if(version===3&&(deckProfile!=='standard'||difficulty!=='normal'))throw Error('旧版记录仅支持经典牌组与标准难度');
+ const s=createGame(()=>0);s.version=version;s.deckProfile=deckProfile;s.difficulty=difficulty;s.seed=normalizeSeed(seed);s.runId=globalThis.crypto?.randomUUID?.()||`${Date.now()}-${randomSeed()}`;s.startedAt=new Date().toISOString();s.bestHand=0;startStage(s);return s;
 }
 function selectedCards(s,ids){
  if(s.phase!=='play')throw Error('当前不在出牌阶段');
@@ -103,17 +115,18 @@ function selectedCards(s,ids){
 }
 function replaceCards(s,ids){s.hand=s.hand.filter(c=>!ids.includes(c.id));s.hand.push(...s.deck.splice(0,8-s.hand.length));}
 export function makeShop(s,rng){
- rng??=s.seed?seededRng(`${s.seed}/shop/${s.stage}/${s.shopGeneration||0}`):Math.random;s.shopGeneration=(s.shopGeneration||0)+1;
- s.shop={modules:shuffled(MODULES.filter(m=>!s.modules.includes(m.id)),rng).slice(0,3).map(m=>({id:m.id,bought:false})),upgrades:shuffled(HANDS,rng).slice(0,2).map(h=>({id:h.id,bought:false})),rerolls:0};
+ const suffix=deckFor(s)===DECKS.standard?'':`/${s.deckProfile}`;
+ rng??=s.seed?seededRng(`${s.seed}/shop/${s.stage}/${s.shopGeneration||0}${suffix}`):Math.random;s.shopGeneration=(s.shopGeneration||0)+1;
+ s.shop={modules:shuffled(MODULES.filter(m=>!s.modules.includes(m.id)&&!(deckFor(s)===DECKS.numeric&&m.id==='face')),rng).slice(0,3).map(m=>({id:m.id,bought:false})),upgrades:shuffled(HANDS,rng).slice(0,2).map(h=>({id:h.id,bought:false})),rerolls:0};
 }
 export function play(s,ids,rng){
  const p=preview(s,selectedCards(s,ids));if(p.blocked)throw Error('本关首次出牌必须选择 5 张牌。');
  s.hands--;s.played++;s.score+=p.points;s.usedHands??=[];s.usedHands.push(p.hand.id);
  s.bestHand=Math.max(s.bestHand||0,p.points);
  s.last={name:p.hand.name,handId:p.hand.id,points:p.points,chips:p.chips,mult:p.mult,steps:p.steps,handChips:p.handChips,cardChips:p.cardChips,baseMult:p.baseMult,penalty:p.penalty,cards:p.scoring.map(c=>({...c}))};replaceCards(s,ids);
- if(s.score>=TARGETS[s.stage]){
+ if(s.score>=targetFor(s)){
   const interest=Math.min(5,Math.floor(s.money/5)),reward=5+s.hands+interest;s.money+=reward;
-  s.history.unshift({stage:s.stage+1,score:s.score,target:TARGETS[s.stage],reward});s.last.reward=reward;
+  s.history.unshift({stage:s.stage+1,score:s.score,target:targetFor(s),reward});s.last.reward=reward;
   s.phase=s.stage===7?'won':'shop';if(s.phase==='shop')makeShop(s,rng);
  }else if(s.hands===0)s.phase='lost';
  return p;
@@ -130,12 +143,14 @@ export function sell(s,id){if(s.phase!=='shop'||!s.modules.includes(id))throw Er
 export function reroll(s,rng){if(s.phase!=='shop'||s.money<3)throw Error('刷新需要 $3');s.money-=3;const n=s.shop.rerolls+1;makeShop(s,rng);s.shop.rerolls=n;}
 export function nextStage(s,rng){if(s.phase!=='shop'||s.stage>=7)throw Error('不能进入下一阶段');s.stage++;s.shop=null;startStage(s,rng);}
 export function validSave(s){
- if(!s||![1,2,3].includes(s.version)||!['play','shop','won','lost'].includes(s.phase)||!Number.isInteger(s.stage)||s.stage<0||s.stage>7)return false;
+ if(!s||![1,2,3,4].includes(s.version)||!['play','shop','won','lost'].includes(s.phase)||!Number.isInteger(s.stage)||s.stage<0||s.stage>7)return false;
+ if(s.version>=4&&(!Object.hasOwn(DECKS,s.deckProfile)||!Object.hasOwn(DIFFICULTIES,s.difficulty)))return false;
  if(s.version>=2&&(!Array.isArray(s.usedHands)||s.usedHands.length!==s.played||!s.usedHands.every(id=>HANDS.some(h=>h.id===id))))return false;
  if(s.version>=3&&(!/^[A-Z0-9-]{1,24}$/.test(s.seed)||typeof s.runId!=='string'||!s.runId||!Number.isFinite(Date.parse(s.startedAt))||!Number.isInteger(s.shopGeneration)||s.shopGeneration<0||!Number.isInteger(s.bestHand)||s.bestHand<0))return false;
- if(!['score','money','hands','discards','played'].every(k=>Number.isInteger(s[k])&&s[k]>=0)||s.hands>4||s.discards>3||s.played>4||s.hands+s.played!==4)return false;
+ if(!['score','money','hands','discards','played'].every(k=>Number.isInteger(s[k])&&s[k]>=0)||s.hands>4||s.discards>deckFor(s).discards||s.played>4||s.hands+s.played!==4)return false;
  if(!Array.isArray(s.hand)||s.hand.length>8||!Array.isArray(s.deck)||!Array.isArray(s.modules)||s.modules.length>5||new Set(s.modules).size!==s.modules.length||s.modules.some(id=>!MODULES.some(m=>m.id===id)))return false;
  const cards=[...s.hand,...s.deck];if(new Set(cards.map(c=>c?.id)).size!==cards.length||!cards.every(c=>c&&['S','H','C','D'].includes(c.suit)&&Number.isInteger(c.rank)&&c.rank>=2&&c.rank<=14&&c.id===`${c.suit}${c.rank}`))return false;
+ if(s.version>=4&&!cards.every(c=>deckFor(s).ranks.includes(c.rank)))return false;
  if(!HANDS.every(h=>Number.isInteger(s.levels?.[h.id])&&s.levels[h.id]>=1)||!Array.isArray(s.history)||s.history.length>8||!s.history.every(h=>Number.isInteger(h.stage)&&Number.isFinite(h.score)&&Number.isFinite(h.reward)))return false;
  if(s.last!==null&&(!s.last||typeof s.last.name!=='string'||!Number.isFinite(s.last.points)||!Number.isFinite(s.last.chips)||!Number.isFinite(s.last.mult)))return false;
  if(s.phase==='shop'&&(!s.shop||!Array.isArray(s.shop.modules)||s.shop.modules.length!==3||!s.shop.modules.every(o=>MODULES.some(m=>m.id===o.id)&&typeof o.bought==='boolean')||!Array.isArray(s.shop.upgrades)||s.shop.upgrades.length!==2||!s.shop.upgrades.every(o=>HANDS.some(h=>h.id===o.id)&&typeof o.bought==='boolean')||!Number.isInteger(s.shop.rerolls)))return false;
