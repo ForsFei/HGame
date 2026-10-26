@@ -122,6 +122,19 @@ export function createSeededGame(seed=randomSeed(),{deckProfile='standard',diffi
  if(version===3&&(deckProfile!=='standard'||difficulty!=='normal'))throw Error('旧版记录仅支持经典牌组与标准难度');
  const s=createGame(()=>0);s.version=version;if(version>=5)s.freeRerollUsed=false;s.deckProfile=deckProfile;s.difficulty=difficulty;s.seed=normalizeSeed(seed);s.runId=globalThis.crypto?.randomUUID?.()||`${Date.now()}-${randomSeed()}`;s.startedAt=new Date().toISOString();s.bestHand=0;s.recap=newRecap();startStage(s);return s;
 }
+export function dailyConfig(value=new Date()){
+ const date=value instanceof Date?new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(value):value;
+ if(typeof date!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(date))throw Error('挑战日期无效');
+ const timestamp=Date.parse(`${date}T00:00:00Z`);
+ if(!Number.isFinite(timestamp)||new Date(timestamp).toISOString().slice(0,10)!==date)throw Error('挑战日期无效');
+ const day=Math.floor(timestamp/86400000),deckProfile=['standard','trimmed','numeric'][((day%3)+3)%3];
+ return {dailyDate:date,seed:`DAILY-${date.replaceAll('-','')}`,deckProfile,difficulty:'normal',version:5};
+}
+export function createDailyGame(value){const config=dailyConfig(value);return {...createSeededGame(config.seed,config),dailyDate:config.dailyDate};}
+export function validDaily(s){
+ if(s.dailyDate==null)return true;
+ try{const config=dailyConfig(s.dailyDate);return Object.entries(config).every(([key,value])=>s[key]===value);}catch{return false;}
+}
 function selectedCards(s,ids){
  if(s.phase!=='play')throw Error('当前不在出牌阶段');
  if(!Array.isArray(ids)||ids.length<1||ids.length>5||new Set(ids).size!==ids.length||ids.some(id=>!s.hand.some(c=>c.id===id)))throw Error('请选择手中的 1–5 张牌');
@@ -163,6 +176,7 @@ export function reroll(s,rng){const cost=rerollCost(s);if(s.phase!=='shop'||s.mo
 export function nextStage(s,rng){if(s.phase!=='shop'||s.stage>=7)throw Error('不能进入下一阶段');s.stage++;s.shop=null;startStage(s,rng);}
 export function validSave(s){
  if(!s||![1,2,3,4,5].includes(s.version)||!['play','shop','won','lost'].includes(s.phase)||!Number.isInteger(s.stage)||s.stage<0||s.stage>7)return false;
+ if(!validDaily(s))return false;
  if(s.version>=5&&typeof s.freeRerollUsed!=='boolean')return false;
  if(s.recap!==undefined&&!validRecap(s.recap))return false;
  if(s.version>=4&&(!Object.hasOwn(DECKS,s.deckProfile)||!Object.hasOwn(DIFFICULTIES,s.difficulty)))return false;

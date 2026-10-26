@@ -1,7 +1,7 @@
-import {HANDS,MODULES,TARGETS,DECKS,DIFFICULTIES,deckFor,difficultyFor,targetFor,stageRule,moduleDescription,rankText,suitText,createSeededGame,preview,suggestHands,play,discard,buyModule,upgrade,sell,reroll,rerollCost,nextStage,validSave} from './engine.js';
-import {recordRun,validRecord} from './records.js';
+import {HANDS,MODULES,TARGETS,DECKS,DIFFICULTIES,deckFor,difficultyFor,targetFor,stageRule,moduleDescription,rankText,suitText,createSeededGame,createDailyGame,dailyConfig,preview,suggestHands,play,discard,buyModule,upgrade,sell,reroll,rerollCost,nextStage,validSave} from './engine.js';
+import {recordRun,validRecord,dailyResults} from './records.js';
 const $=id=>document.getElementById(id),fmt=n=>n.toLocaleString('zh-CN'),esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-let state,selected=[],quiet=document.documentElement.dataset.view==='quiet',sort='rank',storageWarning=false,records=[],pendingVersion=5,pendingPurchase=null,suggestionOptions=[];
+let state,selected=[],quiet=document.documentElement.dataset.view==='quiet',sort='rank',storageWarning=false,records=[],pendingVersion=5,pendingPurchase=null,pendingDailyDate=null,displayedDailyDate=null,suggestionOptions=[];
 try{const data=JSON.parse(localStorage.getItem('cardlab-save'));if(validSave(data))state=data;}catch{}
 state??=createSeededGame();
 state.runId??=crypto.randomUUID();
@@ -22,7 +22,7 @@ function render(){
  $('deckInputLabel').textContent=quiet?'样本配置':'起始牌组';$('difficultyInputLabel').textContent=quiet?'指标强度':'难度';
  for(const id of ['deckInput','recordDeck'])for(const option of $(id).options){option.textContent=option.value?(quiet?DECKS[option.value].quiet:DECKS[option.value].name)+(id==='deckInput'?` · ${DECKS[option.value].size}`:''):(quiet?'全部样本':'全部牌组');}
  $('recordDeck').setAttribute('aria-label',quiet?'按样本配置筛选':'按牌组筛选');
- $('seedLabel').textContent=(state.seed?`${quiet?'记录编号':'种子'} · ${state.seed} / v${state.version}`:(quiet?'旧版记录 · 无编号':'经典存档 · 无种子编号'))+` · ${quiet?deckFor(state).quiet:deckFor(state).name} / ${difficultyFor(state).name}`;
+ $('seedLabel').textContent=(state.dailyDate?`${quiet?'每日记录':'每日挑战'} ${state.dailyDate} · `:'')+(state.seed?`${quiet?'记录编号':'种子'} · ${state.seed} / v${state.version}`:(quiet?'旧版记录 · 无编号':'经典存档 · 无种子编号'))+` · ${quiet?deckFor(state).quiet:deckFor(state).name} / ${difficultyFor(state).name}`;
  $('replayCurrent').disabled=!state.seed;$('replayCurrent').textContent=quiet?'按编号重建':'同种子重开';
  $('recapButton').textContent=quiet?'过程明细':'构筑回顾';$('recapTitle').textContent=quiet?'过程明细':'构筑回顾';$('recapContent').innerHTML=recapHTML(state.recap,state.modules);
  $('recordsButton').textContent=quiet?'历史记录':'本地战绩';$('recordsTitle').textContent=quiet?'历史记录':'本地战绩';$('seedInputLabel').textContent=quiet?'记录编号（留空随机）':'种子编号（留空随机）';
@@ -52,8 +52,20 @@ function render(){
  renderStageRule();
  if(currentPreview?.blocked)$('preview').insertAdjacentHTML('beforeend',`<p class="blocked">${quiet?'本阶段首次提交需选择 5 项。':'本关第一次出牌必须选择 5 张牌。'}</p>`);
  if(state.last?.handChips!==undefined)$('last').insertAdjacentHTML('beforeend',scoreDetails(state.last));
- renderSuggestions();renderConfiguration();renderRecords();renderHelp();if($('replaceDialog').open&&pendingPurchase!==null)openReplacement(pendingPurchase);document.documentElement.classList.add('ready');
+ renderDaily();renderSuggestions();renderConfiguration();renderRecords();renderHelp();if($('replaceDialog').open&&pendingPurchase!==null)openReplacement(pendingPurchase);document.documentElement.classList.add('ready');
 }
+function renderDaily(){
+ const config=dailyConfig(),result=dailyResults(records,config.dailyDate),deck=DECKS[config.deckProfile];displayedDailyDate=config.dailyDate;
+ $('dailyTitle').textContent=`${quiet?'每日记录':'每日挑战'} · ${config.dailyDate}`;
+ $('dailyHint').textContent=`${quiet?deck.quiet:deck.name} · 标准 · ${config.seed} · 北京时间换日 · 统计限本地最近 50 条完成记录`;
+ $('dailyBest').textContent=result.best?`今日已完成 ${result.attempts} ${quiet?'条':'局'} · ${quiet?'全部达标':'通关'} ${result.wins} 次 · 最佳：${result.best.outcome==='won'?(quiet?'全部指标完成':'全部通关'):`到达第 ${result.best.stage} 阶段`} · 累计 ${fmt(result.best.total)}`:'今日暂无完成记录，可以不限次数尝试。';
+ $('dailyButton').textContent=quiet?'新建每日记录':'挑战今日';$('dailyRecords').textContent=quiet?'今日记录':'今日战绩';
+ $('recordMode').setAttribute('aria-label',quiet?'按记录类型筛选':'按挑战类型筛选');
+ for(const option of $('recordMode').options)option.textContent=quiet?({'':'全部记录',today:'今日每日记录',daily:'全部每日记录',custom:'普通记录'})[option.value]:({'':'全部对局',today:'今日挑战',daily:'全部每日挑战',custom:'普通对局'})[option.value];
+}
+$('dailyButton').onclick=()=>{const config=dailyConfig();openNew(config.seed,config);};
+$('dailyRecords').onclick=()=>{$('recordMode').value='today';$('recordDeck').value=$('recordDifficulty').value='';renderRecords();$('recordsDialog').showModal();};
+setInterval(()=>{if(dailyConfig().dailyDate===displayedDailyDate)return;renderDaily();if($('recordsDialog').open&&$('recordMode').value==='today')renderRecords();},60000);
 function renderSuggestions(){
  $('suggestionsTitle').textContent=quiet?'组合建议':'出牌建议';
  if(!$('suggestions').open||state.phase!=='play'){suggestionOptions=[];$('suggestionList').innerHTML='';return;}
@@ -67,8 +79,9 @@ $('suggestions').addEventListener('toggle',renderSuggestions);
 $('suggestionList').onclick=e=>{const b=e.target.closest('[data-suggest]');if(!b||state.phase!=='play')return;const option=suggestionOptions[Number(b.dataset.suggest)];if(!option)return;selected=[...option.ids];render();notify(quiet?'已应用建议，请确认后手动提交。':'已选好建议手牌，请确认后手动出牌。');};
 function renderConfiguration(){
  const p=DECKS[$('deckInput').value],d=DIFFICULTIES[$('difficultyInput').value];
+ $('newTitle').textContent=pendingDailyDate?`${quiet?'新建每日记录':'挑战'} ${pendingDailyDate}？`:(quiet?'新建分析记录？':'开启新的一局？');$('seedInputLabel').textContent=pendingDailyDate?'每日固定编号':(quiet?'记录编号（留空随机）':'种子编号（留空随机）');
  const desc=quiet?`共 ${p.size} 项样本，每阶段 ${p.discards} 次替换。${p===DECKS.trimmed?'不含 2、3。':p===DECKS.numeric?'不含 J/Q/K，配置更新不提供模块 07。':'包含所有类别与数值。'}`:p.desc;
- $('configurationHint').textContent=`${pendingVersion===3?'按历史 v3 规则复现，配置已锁定。 ':''}${pendingVersion>=5?'v5：整次记录首次刷新免费，之后每次 $3。 ':'历史规则：每次刷新 $3。 '}${desc} ${quiet?'阶段指标':'八关目标'}：${TARGETS.map(t=>Math.round(t*d.scale)).join(' / ')}。`;
+ $('configurationHint').textContent=`${pendingDailyDate?`${quiet?'每日记录':'每日挑战'} ${pendingDailyDate} · 配置固定（北京时间）。 `:''}${pendingVersion===3?'按历史 v3 规则复现，配置已锁定。 ':''}${pendingVersion>=5?'v5：整次记录首次刷新免费，之后每次 $3。 ':'历史规则：每次刷新 $3。 '}${desc} ${quiet?'阶段指标':'八关目标'}：${TARGETS.map(t=>Math.round(t*d.scale)).join(' / ')}。`;
 }
 function scoreDetails(p){
  const rows=[[quiet?'组合基础值':'牌型筹码',p.handChips],[quiet?'计入样本数值':'计分牌点数',p.cardChips],[quiet?'初始系数':'基础倍率',p.baseMult]];
@@ -92,6 +105,7 @@ function renderHelp(){
  $('helpTitle').textContent=quiet?'分析流程说明':'把一手牌，做成一套策略';
  $('helpContent').innerHTML=quiet?'<p>共有 8 阶段，每阶段 4 次提交、3 次替换。点击选择 1–5 项，预览收益后提交；或使用替换机会更新所选样本。</p><p>单值只统计最高值，双值/三值/四值只统计对应重复项；双组统计两组重复项；其余组合统计全部五项。A=11，J/Q/K=10。</p><p>组合基础值与模块加成累加后乘以系数。模块乘法最后处理。达到指标即可配置模块，未达指标且次数耗尽则结束。</p><p>每阶段收入 = 5 + 剩余提交次数 + 资金收益（每 $5 提供 $1，最多 $5）。最多持有 5 个模块，配置阶段可出售。升级效果持续整次记录。</p><p>Alt+M 切换视图，自动保存本次记录。页面为本地分析视图，不会隐藏浏览器地址或历史。</p>':'<p>这是一款原创扑克构筑小游戏：用有限的出牌次数达到目标，关间购买效果模块，挑战全部 8 关。</p><p>每关抽 8 张牌，最多出牌 4 次、弃牌 3 次。选 1–5 张后可以出牌或弃掉补牌。出牌前会显示准确分数。每关开始重新洗一副 52 张牌，不含大小王；支持 A2345 顺子。</p><p>高牌只计最高一张；一对、两对、三条、四条只计构成牌型的牌；顺子、同花、葫芦、同花顺计全部五张。A 计 11，J/Q/K 计 10。只看所选牌，不自动从超出五张的牌中挑选。</p><p>得分 =（牌型筹码 + 计分牌点数 + 模块筹码）×（牌型倍率 + 模块倍率），再结算乘法模块，向下取整。升级牌型永久增加本局该牌型的筹码与倍率。</p><p>过关收入 = $5 + 剩余出牌次数 + 利息（当前资金每 $5 提供 $1，最多 $5）。商店最多持有 5 个模块，可以出售换位；刷新整组商品花费 $3。每一关单独累计分数。</p><p>Alt+M 切换简洁视图。进度自动保存在当前浏览器；新建一局会覆盖存档。全程离线，无需付费或 API Key。</p>';
  $('helpContent').innerHTML=$('helpContent').innerHTML.replace('每阶段 4 次提交、3 次替换',`每阶段 4 次提交、${deckFor(state).discards} 次替换`).replace('最多出牌 4 次、弃牌 3 次',`最多出牌 4 次、弃牌 ${deckFor(state).discards} 次`).replace('每关开始重新洗一副 52 张牌',`每关开始重新洗一副 ${deckFor(state).size} 张牌`).replace('支持 A2345 顺子',deckFor(state)===DECKS.trimmed?'本牌组不含 2、3，无法组成 A2345 顺子':'支持 A2345 顺子');
+ $('helpContent').insertAdjacentHTML('beforeend',`<p>每日挑战按北京时间日期生成固定编号与牌组，难度为标准。可不限次数重试，配置不可修改；历史每日挑战再次挑战仍保留原日期。今日最好成绩优先比较通关、到达关卡、累计得分。统计仅使用本浏览器最近 50 条完成记录，中途放弃不计入。</p>`);
  $('helpContent').insertAdjacentHTML('beforeend',`<p>${quiet?'组合建议':'出牌建议'}默认收起，展开后比较当前手中全部 1–5 项合法组合，每种类型保留最高分，最多展示三种。建议会考虑模块、等级和阶段规则，但不计算替换后的概率或后续收益。应用只改变当前选择，仍需手动提交。</p>`);
  $('helpContent').insertAdjacentHTML('beforeend',`<p>${state.version>=5?'v5 整局首次刷新免费，使用后每次 $3；免费次数跨阶段保存。':'此历史版本每次刷新 $3。'}模块满 5 个时，可以选择替换购买；旧模块按卖价抵扣，确认后一次完成交易，取消不会扣款。</p>`);
  $('helpContent').insertAdjacentHTML('beforeend',`<p>当前配置：${quiet?deckFor(state).quiet:deckFor(state).name}，${difficultyFor(state).name}。${quiet?'阶段指标':'过关目标'}为基础目标的 ${Math.round(difficultyFor(state).scale*100)}%。精简配置不含 2/3；数值配置不含 J/Q/K，每阶段只可替换 2 次，也不会提供模块 07。历史记录可以按配置筛选，再次挑战会恢复原有配置。</p>`);
@@ -110,10 +124,11 @@ function recapHTML(recap,modules=[]){
  return `<div class="recap-summary"><b>${recap.partial?'部分记录 · 从更新后操作开始':'从本局开局开始记录'}</b><p>已记录 ${plays.length} 次${quiet?'提交':'出牌'} · ${recap.stages.reduce((n,s)=>n+s.discards,0)} 次${quiet?'替换样本':'弃牌'}${omitted?' · 交易明细已截断':''}</p><p>最高单次 ${best?`${fmt(best.points)} · ${esc(handText(best.handId))}`:'—'}</p><p>${quiet?'常用组合':'常用牌型'}：${esc(top||'—')}</p><p>已记录支出 $${cost} · 卖出抵扣 $${refund}</p><p>${quiet?'当前／最终配置':'当前／最终模块'}：${esc(moduleList)}</p></div>${recap.stages.length?recap.stages.map(row=>`<section class="recap-stage"><h3>${quiet?'阶段':'关卡'} ${row.stage} · ${fmt(row.score)} / ${row.target?fmt(row.target):'—'}</h3><p>${row.plays.length} 次${quiet?'提交':'出牌'} · ${row.discards} 次${quiet?'替换':'弃牌'}</p>${row.plays.length?row.plays.map((p,i)=>`<div class="recap-play"><b>${i+1}. ${esc(handText(p.handId))} · ${fmt(p.points)}</b><span>${quiet?'计入项':'计分牌'}：${esc(p.cards.map(id=>`${quiet?id[0]:suitText(id[0])}${rankText(Number(id.slice(1)))}`).join(' · '))}</span></div>`).join(''):'<p class="empty">本阶段暂无已记录的提交。</p>'}${row.transactions.length?`<ul class="recap-transactions">${row.transactions.map(t=>{const label=t.type==='buy'?`购入 ${moduleText(t.moduleId)}`:t.type==='replace'?`${moduleText(t.replacedId)} → ${moduleText(t.moduleId)}`:t.type==='sell'?`出售 ${moduleText(t.moduleId)}`:t.type==='upgrade'?`升级 ${handText(t.handId)}`:'刷新商品';return `<li>${esc(label)} · ${t.refund?`抵扣 $${t.refund} / `:''}支出 $${t.cost} · 余额 $${t.balance}</li>`;}).join('')}</ul>`:''}${row.omitted?`<p class="empty">另有 ${row.omitted} 条交易未保留；每阶段最多保存 50 条。</p>`:''}</section>`).join(''):'<p class="empty">还没有操作记录，出牌或交易后即可回看。</p>'}`;
 }
 function renderRecords(){
- const filtered=records.filter(r=>(!$('recordDeck').value||(r.deckProfile||'standard')===$('recordDeck').value)&&(!$('recordDifficulty').value||(r.difficulty||'normal')===$('recordDifficulty').value));
+ const mode=$('recordMode').value,today=dailyConfig().dailyDate;
+ const filtered=records.filter(r=>(!mode||mode==='today'&&r.dailyDate===today||mode==='daily'&&Boolean(r.dailyDate)||mode==='custom'&&!r.dailyDate)&&(!$('recordDeck').value||(r.deckProfile||'standard')===$('recordDeck').value)&&(!$('recordDifficulty').value||(r.difficulty||'normal')===$('recordDifficulty').value));
  const wins=filtered.filter(r=>r.outcome==='won').length;
  $('recordSummary').textContent=`符合筛选 ${filtered.length} 条 · 完成全部阶段 ${wins} 次 · 累计最高 ${fmt(Math.max(0,...filtered.map(r=>r.total)))}`;
- $('recordList').innerHTML=filtered.length?filtered.map(r=>{const deck=DECKS[r.deckProfile||'standard'],diff=DIFFICULTIES[r.difficulty||'normal'];return `<article class="run-record"><div><b>${r.outcome==='won'?'已完成':'未达指标'} · ${r.stage}/8</b><span>${new Date(r.finishedAt).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',hour12:false})}</span></div><p>${quiet?deck.quiet:deck.name} · ${diff.name} · ${r.seed?esc(r.seed):'经典存档'} / v${r.version}</p><p>累计 ${fmt(r.total)} · 单次最高 ${(r.bestHand===null?'—':fmt(r.bestHand))}</p><details class="record-recap" data-record-recap="${esc(r.id)}"><summary>${quiet?'过程明细':'构筑回顾'}</summary><div class="record-recap-body"></div></details><button data-replay="${esc(r.id)}" ${![3,4,5].includes(r.version)||!r.seed?'disabled':''}>${quiet?'按编号重建':'同种子再挑战'}</button></article>`;}).join(''):'<p class="empty">暂无符合筛选的完成记录。当前进度仍会自动保存。</p>';
+ $('recordList').innerHTML=filtered.length?filtered.map(r=>{const deck=DECKS[r.deckProfile||'standard'],diff=DIFFICULTIES[r.difficulty||'normal'];return `<article class="run-record"><div><b>${r.outcome==='won'?'已完成':'未达指标'} · ${r.stage}/8</b><span>${new Date(r.finishedAt).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',hour12:false})}</span></div><p>${r.dailyDate?`${quiet?'每日记录':'每日挑战'} ${esc(r.dailyDate)} · `:''}${quiet?deck.quiet:deck.name} · ${diff.name} · ${r.seed?esc(r.seed):'经典存档'} / v${r.version}</p><p>累计 ${fmt(r.total)} · 单次最高 ${(r.bestHand===null?'—':fmt(r.bestHand))}</p><details class="record-recap" data-record-recap="${esc(r.id)}"><summary>${quiet?'过程明细':'构筑回顾'}</summary><div class="record-recap-body"></div></details><button data-replay="${esc(r.id)}" ${![3,4,5].includes(r.version)||!r.seed?'disabled':''}>${quiet?'按编号重建':'同种子再挑战'}</button></article>`;}).join(''):'<p class="empty">暂无符合筛选的完成记录。当前进度仍会自动保存。</p>';
 }
 $('cards').onclick=e=>{const card=e.target.closest('[data-card]');if(!card||state.phase!=='play')return;const id=card.dataset.card;if(selected.includes(id))selected=selected.filter(x=>x!==id);else if(selected.length<5)selected.push(id);else return notify(quiet?'最多选择 5 项':'最多选择 5 张牌');render();};
 $('clear').onclick=()=>{selected=[];render();};$('sortRank').onclick=()=>{sort='rank';render();};$('sortSuit').onclick=()=>{sort='suit';render();};
@@ -132,13 +147,13 @@ $('reroll').onclick=()=>execute(()=>reroll(state));$('next').onclick=()=>execute
 function toggle(){quiet=!quiet;try{localStorage.setItem('cardlab-view',quiet?'quiet':'standard');}catch{}render();}
 $('view').onclick=toggle;document.addEventListener('keydown',e=>{if(e.altKey&&e.code==='KeyM'&&!e.repeat){e.preventDefault();toggle();}});
 $('help').onclick=()=>$('helpDialog').showModal();$('closeHelp').onclick=()=>$('helpDialog').close();
-function openNew(seed='',source=null){pendingVersion=[3,4,5].includes(source?.version)?source.version:5;$('seedInput').value=seed;$('seedError').textContent='';$('deckInput').value=source?.deckProfile||'standard';$('difficultyInput').value=source?.difficulty||'normal';$('deckInput').disabled=$('difficultyInput').disabled=pendingVersion===3;renderConfiguration();$('newDialog').showModal();}
+function openNew(seed='',source=null){pendingVersion=[3,4,5].includes(source?.version)?source.version:5;pendingDailyDate=source?.dailyDate||null;$('seedInput').value=seed;$('seedInput').disabled=Boolean(pendingDailyDate);$('seedError').textContent='';$('deckInput').value=source?.deckProfile||'standard';$('difficultyInput').value=source?.difficulty||'normal';$('deckInput').disabled=$('difficultyInput').disabled=pendingVersion===3||Boolean(pendingDailyDate);renderConfiguration();$('newDialog').showModal();}
 for(const id of ['new','restart'])$(id).onclick=()=>openNew();$('replayCurrent').onclick=()=>openNew(state.seed,state);
 $('deckInput').onchange=$('difficultyInput').onchange=renderConfiguration;
-$('cancelNew').onclick=()=>$('newDialog').close();$('confirmNew').onclick=()=>{try{const input=$('seedInput').value.trim(),fresh=createSeededGame(input||undefined,{version:pendingVersion,deckProfile:$('deckInput').value,difficulty:$('difficultyInput').value});$('newDialog').close();execute(()=>{state=fresh;return quiet?'新记录已创建':'新的一局开始了';});}catch(e){$('seedError').textContent=e.message;}};
+$('cancelNew').onclick=()=>$('newDialog').close();$('confirmNew').onclick=()=>{try{const input=$('seedInput').value.trim(),fresh=pendingDailyDate?createDailyGame(pendingDailyDate):createSeededGame(input||undefined,{version:pendingVersion,deckProfile:$('deckInput').value,difficulty:$('difficultyInput').value});$('newDialog').close();execute(()=>{state=fresh;return quiet?'新记录已创建':'新的一局开始了';});}catch(e){$('seedError').textContent=e.message;}};
 $('recapButton').onclick=()=>{$('recapContent').innerHTML=recapHTML(state.recap,state.modules);$('recapDialog').showModal();};$('closeRecap').onclick=()=>$('recapDialog').close();
 $('recordsButton').onclick=()=>{renderRecords();$('recordsDialog').showModal();};$('closeRecords').onclick=()=>$('recordsDialog').close();
-$('recordDeck').onchange=$('recordDifficulty').onchange=renderRecords;
+$('recordMode').onchange=$('recordDeck').onchange=$('recordDifficulty').onchange=renderRecords;
 $('recordList').addEventListener('toggle',e=>{const detail=e.target;if(!detail.matches('[data-record-recap]')||!detail.open)return;const record=records.find(r=>r.id===detail.dataset.recordRecap);if(record)detail.querySelector('.record-recap-body').innerHTML=recapHTML(record.recap,record.modules);},true);
 $('recordList').onclick=e=>{const b=e.target.closest('[data-replay]');if(!b||b.disabled)return;const r=records.find(r=>r.id===b.dataset.replay);if(r&&[3,4,5].includes(r.version)&&r.seed){$('recordsDialog').close();openNew(r.seed,r);}};
 save();render();if(storageWarning)notify('浏览器存储不可用，本次进度无法自动保存。');
