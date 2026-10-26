@@ -103,10 +103,10 @@ export function startStage(s,rng){
  s.hand=s.deck.splice(0,8);s.score=0;s.hands=4;s.discards=profile.discards;s.played=0;s.phase='play';s.last=null;s.usedHands=[];s.shopGeneration=0;
 }
 export function createGame(rng=Math.random){const s={version:2,stage:0,money:6,modules:[],levels:Object.fromEntries(HANDS.map(h=>[h.id,1])),history:[],phase:'play',shop:null};startStage(s,rng);return s;}
-export function createSeededGame(seed=randomSeed(),{deckProfile='standard',difficulty='normal',version=4}={}){
- if(![3,4].includes(version)||!Object.hasOwn(DECKS,deckProfile)||!Object.hasOwn(DIFFICULTIES,difficulty))throw Error('牌组或难度配置无效');
+export function createSeededGame(seed=randomSeed(),{deckProfile='standard',difficulty='normal',version=5}={}){
+ if(![3,4,5].includes(version)||!Object.hasOwn(DECKS,deckProfile)||!Object.hasOwn(DIFFICULTIES,difficulty))throw Error('牌组或难度配置无效');
  if(version===3&&(deckProfile!=='standard'||difficulty!=='normal'))throw Error('旧版记录仅支持经典牌组与标准难度');
- const s=createGame(()=>0);s.version=version;s.deckProfile=deckProfile;s.difficulty=difficulty;s.seed=normalizeSeed(seed);s.runId=globalThis.crypto?.randomUUID?.()||`${Date.now()}-${randomSeed()}`;s.startedAt=new Date().toISOString();s.bestHand=0;startStage(s);return s;
+ const s=createGame(()=>0);s.version=version;if(version>=5)s.freeRerollUsed=false;s.deckProfile=deckProfile;s.difficulty=difficulty;s.seed=normalizeSeed(seed);s.runId=globalThis.crypto?.randomUUID?.()||`${Date.now()}-${randomSeed()}`;s.startedAt=new Date().toISOString();s.bestHand=0;startStage(s);return s;
 }
 function selectedCards(s,ids){
  if(s.phase!=='play')throw Error('当前不在出牌阶段');
@@ -132,18 +132,23 @@ export function play(s,ids,rng){
  return p;
 }
 export function discard(s,ids){selectedCards(s,ids);if(s.discards===0)throw Error('弃牌机会已用完');s.discards--;replaceCards(s,ids);}
-export function buyModule(s,index){
+export function buyModule(s,index,replaceId){
  const offer=s.shop?.modules[index],m=MODULES.find(m=>m.id===offer?.id);
  if(s.phase!=='shop'||!m||offer.bought)throw Error('商品不可购买');
- if(s.modules.length>=5)throw Error('模块已满，请先出售一个模块');if(s.money<m.price)throw Error('资金不足');
- s.money-=m.price;s.modules.push(m.id);offer.bought=true;
+ if(s.modules.includes(m.id))throw Error('已持有该模块');
+ let refund=0,slot=-1;
+ if(replaceId!==undefined){slot=s.modules.indexOf(replaceId);if(slot<0)throw Error('替换的模块不存在');refund=Math.floor(MODULES.find(m=>m.id===replaceId).price/2);}
+ if(slot<0&&s.modules.length>=5)throw Error('模块已满，请选择替换一个模块');if(s.money+refund<m.price)throw Error('资金不足');
+ s.money+=refund-m.price;if(slot>=0)s.modules.splice(slot,1,m.id);else s.modules.push(m.id);offer.bought=true;
 }
 export function upgrade(s,index){const offer=s.shop?.upgrades[index];if(s.phase!=='shop'||!offer||offer.bought)throw Error('升级不可购买');if(s.money<5)throw Error('资金不足');s.money-=5;s.levels[offer.id]++;offer.bought=true;}
 export function sell(s,id){if(s.phase!=='shop'||!s.modules.includes(id))throw Error('只能在商店出售已有模块');s.modules=s.modules.filter(m=>m!==id);s.money+=Math.floor(MODULES.find(m=>m.id===id).price/2);}
-export function reroll(s,rng){if(s.phase!=='shop'||s.money<3)throw Error('刷新需要 $3');s.money-=3;const n=s.shop.rerolls+1;makeShop(s,rng);s.shop.rerolls=n;}
+export const rerollCost=s=>s.version>=5&&!s.freeRerollUsed?0:3;
+export function reroll(s,rng){const cost=rerollCost(s);if(s.phase!=='shop'||s.money<cost)throw Error('刷新需要 $3');s.money-=cost;if(s.version>=5)s.freeRerollUsed=true;const n=s.shop.rerolls+1;makeShop(s,rng);s.shop.rerolls=n;}
 export function nextStage(s,rng){if(s.phase!=='shop'||s.stage>=7)throw Error('不能进入下一阶段');s.stage++;s.shop=null;startStage(s,rng);}
 export function validSave(s){
- if(!s||![1,2,3,4].includes(s.version)||!['play','shop','won','lost'].includes(s.phase)||!Number.isInteger(s.stage)||s.stage<0||s.stage>7)return false;
+ if(!s||![1,2,3,4,5].includes(s.version)||!['play','shop','won','lost'].includes(s.phase)||!Number.isInteger(s.stage)||s.stage<0||s.stage>7)return false;
+ if(s.version>=5&&typeof s.freeRerollUsed!=='boolean')return false;
  if(s.version>=4&&(!Object.hasOwn(DECKS,s.deckProfile)||!Object.hasOwn(DIFFICULTIES,s.difficulty)))return false;
  if(s.version>=2&&(!Array.isArray(s.usedHands)||s.usedHands.length!==s.played||!s.usedHands.every(id=>HANDS.some(h=>h.id===id))))return false;
  if(s.version>=3&&(!/^[A-Z0-9-]{1,24}$/.test(s.seed)||typeof s.runId!=='string'||!s.runId||!Number.isFinite(Date.parse(s.startedAt))||!Number.isInteger(s.shopGeneration)||s.shopGeneration<0||!Number.isInteger(s.bestHand)||s.bestHand<0))return false;
