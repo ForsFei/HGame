@@ -32,6 +32,10 @@ export const STAGE_RULES={
  7:{id:'variety',name:'变奏',desc:'本关已使用过的牌型再次出牌时，最终得分 ×0.5，向下取整。'}
 };
 export const stageRule=s=>s.version>=2?STAGE_RULES[s.stage]??null:null;
+export function normalizeSeed(seed){const text=String(seed).trim().toUpperCase();if(!/^[A-Z0-9-]{1,24}$/.test(text))throw Error('编号需为 1–24 位字母、数字或短横线');return text;}
+export function randomSeed(){return globalThis.crypto?.randomUUID?.().slice(0,8).toUpperCase()||Math.random().toString(36).slice(2,10).toUpperCase();}
+export function seededRng(text){let n=2166136261;for(const c of text)n=Math.imul(n^c.charCodeAt(0),16777619)>>>0;return ()=>{n=(n+0x6D2B79F5)>>>0;let t=n;t=Math.imul(t^(t>>>15),t|1);t^=t+Math.imul(t^(t>>>7),t|61);return ((t^(t>>>14))>>>0)/4294967296;};}
+export function moduleDescription(m,s){if(s.version>=3&&m.id==='small')return '只出 1–3 张牌时，倍率 +6。';if(s.version>=3&&m.id==='flush')return '同花或同花顺，筹码 +100。';return m.desc;}
 export const cardValue=c=>c.rank===14?11:Math.min(c.rank,10);
 export const rankText=r=>({11:'J',12:'Q',13:'K',14:'A'})[r]||String(r);
 export const suitText=s=>({S:'♠',H:'♥',C:'♣',D:'♦'})[s];
@@ -71,11 +75,11 @@ export function preview(state,cards){
    case 'red':addMult=3*result.scoring.filter(c=>['H','D'].includes(c.suit)).length;break;
    case 'black':addMult=3*result.scoring.filter(c=>['S','C'].includes(c.suit)).length;break;
    case 'face':addChips=30*result.scoring.filter(c=>c.rank>=11&&c.rank<=13).length;break;
-   case 'small':if(cards.length<=3)addMult=10;break;
+   case 'small':if(cards.length<=3)addMult=state.version>=3?6:10;break;
    case 'reserve':addMult=state.discards*3;break;
    case 'wallet':addChips=Math.min(100,Math.floor(state.money/3)*10);break;
    case 'sequence':if(['straight','straightFlush'].includes(result.hand.id))addMult=16;break;
-   case 'flush':if(['flush','straightFlush'].includes(result.hand.id))addChips=80;break;
+   case 'flush':if(['flush','straightFlush'].includes(result.hand.id))addChips=state.version>=3?100:80;break;
   }
   chips+=addChips;mult+=addMult;if(addChips||addMult)steps.push({id,chips:addChips,mult:addMult});
  }
@@ -83,23 +87,29 @@ export function preview(state,cards){
  for(const id of state.modules){const factor=id==='echo'&&state.played>=1?1.5:id==='anchor'&&state.discards===0?2:1;if(factor!==1){mult*=factor;steps.push({id,factor});}}
  return {...result,level,chips,mult,baseChips,baseMult,handChips,cardChips,penalty,blocked,points:Math.floor(chips*mult*penalty),steps};
 }
-export function startStage(s,rng=Math.random){
+export function startStage(s,rng){
+ rng??=s.seed?seededRng(`${s.seed}/deck/${s.stage}`):Math.random;
  s.deck=shuffled(['S','H','C','D'].flatMap(suit=>Array.from({length:13},(_,i)=>({id:`${suit}${i+2}`,rank:i+2,suit}))),rng);
- s.hand=s.deck.splice(0,8);s.score=0;s.hands=4;s.discards=3;s.played=0;s.phase='play';s.last=null;s.usedHands=[];
+ s.hand=s.deck.splice(0,8);s.score=0;s.hands=4;s.discards=3;s.played=0;s.phase='play';s.last=null;s.usedHands=[];s.shopGeneration=0;
 }
 export function createGame(rng=Math.random){const s={version:2,stage:0,money:6,modules:[],levels:Object.fromEntries(HANDS.map(h=>[h.id,1])),history:[],phase:'play',shop:null};startStage(s,rng);return s;}
+export function createSeededGame(seed=randomSeed()){
+ const s=createGame(()=>0);s.version=3;s.seed=normalizeSeed(seed);s.runId=globalThis.crypto?.randomUUID?.()||`${Date.now()}-${randomSeed()}`;s.startedAt=new Date().toISOString();s.bestHand=0;startStage(s);return s;
+}
 function selectedCards(s,ids){
  if(s.phase!=='play')throw Error('当前不在出牌阶段');
  if(!Array.isArray(ids)||ids.length<1||ids.length>5||new Set(ids).size!==ids.length||ids.some(id=>!s.hand.some(c=>c.id===id)))throw Error('请选择手中的 1–5 张牌');
  return ids.map(id=>s.hand.find(c=>c.id===id));
 }
 function replaceCards(s,ids){s.hand=s.hand.filter(c=>!ids.includes(c.id));s.hand.push(...s.deck.splice(0,8-s.hand.length));}
-export function makeShop(s,rng=Math.random){
+export function makeShop(s,rng){
+ rng??=s.seed?seededRng(`${s.seed}/shop/${s.stage}/${s.shopGeneration||0}`):Math.random;s.shopGeneration=(s.shopGeneration||0)+1;
  s.shop={modules:shuffled(MODULES.filter(m=>!s.modules.includes(m.id)),rng).slice(0,3).map(m=>({id:m.id,bought:false})),upgrades:shuffled(HANDS,rng).slice(0,2).map(h=>({id:h.id,bought:false})),rerolls:0};
 }
-export function play(s,ids,rng=Math.random){
+export function play(s,ids,rng){
  const p=preview(s,selectedCards(s,ids));if(p.blocked)throw Error('本关首次出牌必须选择 5 张牌。');
  s.hands--;s.played++;s.score+=p.points;s.usedHands??=[];s.usedHands.push(p.hand.id);
+ s.bestHand=Math.max(s.bestHand||0,p.points);
  s.last={name:p.hand.name,handId:p.hand.id,points:p.points,chips:p.chips,mult:p.mult,steps:p.steps,handChips:p.handChips,cardChips:p.cardChips,baseMult:p.baseMult,penalty:p.penalty,cards:p.scoring.map(c=>({...c}))};replaceCards(s,ids);
  if(s.score>=TARGETS[s.stage]){
   const interest=Math.min(5,Math.floor(s.money/5)),reward=5+s.hands+interest;s.money+=reward;
@@ -117,11 +127,12 @@ export function buyModule(s,index){
 }
 export function upgrade(s,index){const offer=s.shop?.upgrades[index];if(s.phase!=='shop'||!offer||offer.bought)throw Error('升级不可购买');if(s.money<5)throw Error('资金不足');s.money-=5;s.levels[offer.id]++;offer.bought=true;}
 export function sell(s,id){if(s.phase!=='shop'||!s.modules.includes(id))throw Error('只能在商店出售已有模块');s.modules=s.modules.filter(m=>m!==id);s.money+=Math.floor(MODULES.find(m=>m.id===id).price/2);}
-export function reroll(s,rng=Math.random){if(s.phase!=='shop'||s.money<3)throw Error('刷新需要 $3');s.money-=3;const n=s.shop.rerolls+1;makeShop(s,rng);s.shop.rerolls=n;}
-export function nextStage(s,rng=Math.random){if(s.phase!=='shop'||s.stage>=7)throw Error('不能进入下一阶段');s.stage++;s.shop=null;startStage(s,rng);}
+export function reroll(s,rng){if(s.phase!=='shop'||s.money<3)throw Error('刷新需要 $3');s.money-=3;const n=s.shop.rerolls+1;makeShop(s,rng);s.shop.rerolls=n;}
+export function nextStage(s,rng){if(s.phase!=='shop'||s.stage>=7)throw Error('不能进入下一阶段');s.stage++;s.shop=null;startStage(s,rng);}
 export function validSave(s){
- if(!s||![1,2].includes(s.version)||!['play','shop','won','lost'].includes(s.phase)||!Number.isInteger(s.stage)||s.stage<0||s.stage>7)return false;
- if(s.version===2&&(!Array.isArray(s.usedHands)||s.usedHands.length!==s.played||!s.usedHands.every(id=>HANDS.some(h=>h.id===id))))return false;
+ if(!s||![1,2,3].includes(s.version)||!['play','shop','won','lost'].includes(s.phase)||!Number.isInteger(s.stage)||s.stage<0||s.stage>7)return false;
+ if(s.version>=2&&(!Array.isArray(s.usedHands)||s.usedHands.length!==s.played||!s.usedHands.every(id=>HANDS.some(h=>h.id===id))))return false;
+ if(s.version>=3&&(!/^[A-Z0-9-]{1,24}$/.test(s.seed)||typeof s.runId!=='string'||!s.runId||!Number.isFinite(Date.parse(s.startedAt))||!Number.isInteger(s.shopGeneration)||s.shopGeneration<0||!Number.isInteger(s.bestHand)||s.bestHand<0))return false;
  if(!['score','money','hands','discards','played'].every(k=>Number.isInteger(s[k])&&s[k]>=0)||s.hands>4||s.discards>3||s.played>4||s.hands+s.played!==4)return false;
  if(!Array.isArray(s.hand)||s.hand.length>8||!Array.isArray(s.deck)||!Array.isArray(s.modules)||s.modules.length>5||new Set(s.modules).size!==s.modules.length||s.modules.some(id=>!MODULES.some(m=>m.id===id)))return false;
  const cards=[...s.hand,...s.deck];if(new Set(cards.map(c=>c?.id)).size!==cards.length||!cards.every(c=>c&&['S','H','C','D'].includes(c.suit)&&Number.isInteger(c.rank)&&c.rank>=2&&c.rank<=14&&c.id===`${c.suit}${c.rank}`))return false;

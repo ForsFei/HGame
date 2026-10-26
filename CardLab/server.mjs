@@ -1,7 +1,7 @@
 import http from 'node:http';
 import {readFile} from 'node:fs/promises';
 const port=Number(process.env.PORT||43171);
-const files={'/':'index.html','/index.html':'index.html','/app.js':'app.js','/engine.js':'engine.js','/style.css':'style.css'};
+const files={'/':'index.html','/index.html':'index.html','/app.js':'app.js','/engine.js':'engine.js','/records.js':'records.js','/style.css':'style.css'};
 http.createServer(async(req,res)=>{
  const file=files[req.url.split('?')[0]];
  if(!file||req.method!=='GET'){res.writeHead(404);res.end('Not found');return;}
