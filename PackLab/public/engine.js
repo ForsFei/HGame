@@ -124,7 +124,7 @@ export const redoLayout=(s,h)=>restoreLayout(s,h,'redo');
 export function intent(s){const [type,value]=ENEMIES[s.floor].intents[s.enemy?.intentIndex||0],trait=enemyTrait(s);return [type,value+(type==='guard'&&trait?.id==='fortress'?6:0)+(type==='attack'&&trait?.id==='rage'?Math.min(6,Math.floor(Math.max(0,s.turn-1)/3)*2):0)];}
 function startTurn(s){s.energy=3;s.block=s.items.filter(i=>i.x!==null&&i.type==='armor').length*4;s.used=[];}
 export function startBattle(s){if(!['prepare','camp'].includes(s.phase))fail('当前不能进入战斗');if(s.phase==='camp'&&!s.rewardTaken)fail('请先选择或跳过奖励');if(!s.items.some(i=>i.x!==null&&ITEMS[i.type].kind==='weapon'))fail('请至少装备一件武器');if(s.phase==='camp')s.floor++;s.phase='battle';s.turn=1;s.enemy={hp:ENEMIES[s.floor].hp,block:enemyTrait(s)?.id==='fortress'?8:0,intentIndex:0};startTurn(s);Object.assign(recapRow(s),{startHp:s.hp});log(s,{type:'start',floor:s.floor});}
-function victory(s){finishRecap(s,'won');s.gold+=5+s.floor+s.items.filter(i=>i.x!==null&&i.type==='pouch').length*3;s.hp=Math.min(MAX_HP,s.hp+4);log(s,{type:'win',floor:s.floor});if(s.floor===7){s.phase='won';return;}s.phase='camp';s.rewardTaken=false;s.rested=false;const random=rng(`${s.seed}/camp/${s.floor}${s.version>=2?'/v2':''}`),pool=s.version>=2?Object.keys(ITEMS):LEGACY_ITEMS;if(s.version>=2){const supply=sample(['herb','flask','bomb'],random,1)[0];s.rewards=[supply,...sample(pool.filter(t=>t!==supply),random,2)];}else s.rewards=sample(pool,random,3);s.offers=sample(pool,random,3).map(type=>({type,bought:false}));}
+function victory(s){finishRecap(s,'won');s.gold+=5+s.floor+s.items.filter(i=>i.x!==null&&i.type==='pouch').length*3;s.hp=Math.min(MAX_HP,s.hp+4);log(s,{type:'win',floor:s.floor});if(s.floor===7){s.phase='won';return;}s.phase='camp';s.rewardTaken=false;s.rested=false;s.shopRefreshes=0;const random=rng(`${s.seed}/camp/${s.floor}${s.version>=2?'/v2':''}`),pool=s.version>=2?Object.keys(ITEMS):LEGACY_ITEMS;if(s.version>=2){const supply=sample(['herb','flask','bomb'],random,1)[0];s.rewards=[supply,...sample(pool.filter(t=>t!==supply),random,2)];}else s.rewards=sample(pool,random,3);s.offers=sample(pool,random,3).map(type=>({type,bought:false}));}
 export function combatPreview(s,uid){
  if(s.phase!=='battle')fail('当前不在战斗阶段');const i=item(s,uid),def=ITEMS[i.type],e=effects(s,i);
  const damage=Math.min(s.enemy.hp,Math.max(0,e.damage-(def.pierce?0:s.enemy.block))),enemyBlock=def.pierce?s.enemy.block:Math.max(0,s.enemy.block-e.damage);
@@ -146,9 +146,21 @@ export function endTurn(s){if(s.phase!=='battle')fail('当前不在战斗阶段'
 export function takeReward(s,index){if(s.phase!=='camp'||s.rewardTaken||!s.rewards[index])fail('奖励不可领取');if(s.items.length>=MAX_ITEMS)fail('仓库已满，请先出售物品或跳过奖励');const i=add(s,s.rewards[index]);s.rewardTaken=true;log(s,{type:'loot',item:i.type});return i.uid;}
 export function skipReward(s){if(s.phase!=='camp'||s.rewardTaken)fail('奖励不可领取');s.rewardTaken=true;s.gold+=3;log(s,{type:'skip'});}
 export function buy(s,index){const o=s.offers[index];if(s.phase!=='camp'||!o||o.bought)fail('商品不可购买');if(s.items.length>=MAX_ITEMS)fail('仓库已满，请先出售物品');if(s.gold<ITEMS[o.type].price)fail('金币不足');s.gold-=ITEMS[o.type].price;const i=add(s,o.type);o.bought=true;log(s,{type:'buy',item:i.type});return i.uid;}
+export const SHOP_REFRESH_COST=3;
+export function shopRefreshPreview(s){
+ const used=s.shopRefreshes??0,reason=s.version<2?'classic':s.phase!=='camp'?'camp':used>=1?'used':s.gold<SHOP_REFRESH_COST?'funds':null;
+ return {cost:SHOP_REFRESH_COST,used,reason,canRefresh:reason===null,remaining:Math.max(0,1-used),balanceAfter:s.gold-SHOP_REFRESH_COST};
+}
+export function refreshShop(s){
+ const p=shopRefreshPreview(s);if(!p.canRefresh)fail(({classic:'经典存档不启用商店刷新',camp:'只能在营地刷新商店',used:'本营地已经刷新过商店',funds:'金币不足，无法刷新商店'})[p.reason]);
+ const previous=new Set(s.offers.map(o=>o.type)),random=rng(`${s.seed}/camp/${s.floor}/v2/refresh/1`);
+ const next=sample(Object.keys(ITEMS).filter(type=>!previous.has(type)),random,3).map(type=>({type,bought:false}));
+ s.gold-=p.cost;s.shopRefreshes=1;s.offers=next;log(s,{type:'refresh',cost:p.cost});
+}
 export function sell(s,uid){editable(s);const i=item(s,uid);if(s.items.filter(o=>ITEMS[o.type].kind==='weapon').length===1&&ITEMS[i.type].kind==='weapon')fail('至少保留一件武器');s.gold+=resaleValue(i);s.items=s.items.filter(o=>o.uid!==uid);log(s,{type:'sell',item:i.type});}
 export function rest(s){if(s.phase!=='camp'||s.rested||s.hp===MAX_HP||s.gold<4)fail('本次无法休整：需要 4 金币且生命未满');s.gold-=4;s.hp=Math.min(MAX_HP,s.hp+10);s.rested=true;log(s,{type:'rest'});}
 export function validSave(s){
+ if(s?.shopRefreshes!==undefined&&(![0,1].includes(s.shopRefreshes)||s.version===1&&s.shopRefreshes!==0||s.phase==='prepare'&&s.shopRefreshes!==0))return false;
  if(s?.recap!==undefined&&!validRecap(s.recap)||s?.runId!==undefined&&(typeof s.runId!=='string'||!/^[A-Za-z0-9-]{1,80}$/.test(s.runId)))return false;
  if(!s||![1,2].includes(s.version)||!['prepare','battle','camp','won','lost'].includes(s.phase)||!Number.isInteger(s.floor)||s.floor<0||s.floor>7||typeof s.seed!=='string'||!/^[A-Z0-9-]{1,24}$/.test(s.seed))return false;
  if(s.version>=2&&!Object.hasOwn(BUILDS,s.build)||s.version===1&&s.build!==undefined&&s.build!=='balanced')return false;
@@ -159,7 +171,7 @@ export function validSave(s){
  if(!s.items.every(i=>Number.isInteger(itemLevel(i))&&itemLevel(i)>=0&&itemLevel(i)<=2&&(itemLevel(i)===0||s.version>=2&&['weapon','guard'].includes(ITEMS[i.type].kind))))return false;
  if(!Array.isArray(s.used)||s.used.length>MAX_ITEMS||new Set(s.used).size!==s.used.length||!s.used.every(id=>typeof id==='string'&&/^i[1-9]\d*$/.test(id)&&Number(id.slice(1))<s.nextId)||typeof s.rewardTaken!=='boolean'||typeof s.rested!=='boolean')return false;
  if(!Array.isArray(s.rewards)||s.rewards.length>3||!s.rewards.every(t=>Object.hasOwn(ITEMS,t))||!Array.isArray(s.offers)||s.offers.length>3||!s.offers.every(o=>o&&Object.hasOwn(ITEMS,o.type)&&typeof o.bought==='boolean'))return false;
- if(!Array.isArray(s.log)||s.log.length>30||!s.log.every(e=>e&&['start','win','use','hit','guard','loot','skip','buy','sell','rest','reflect','forge'].includes(e.type)&&(e.item===undefined||Object.hasOwn(ITEMS,e.item))&&(e.type!=='forge'||s.version>=2&&Number.isInteger(e.level)&&e.level>=1&&e.level<=2&&e.cost===FORGE_COSTS[e.level-1]&&Object.hasOwn(ITEMS,e.item))))return false;
+ if(!Array.isArray(s.log)||s.log.length>30||!s.log.every(e=>e&&['start','win','use','hit','guard','loot','skip','buy','sell','rest','reflect','forge','refresh'].includes(e.type)&&(e.item===undefined||Object.hasOwn(ITEMS,e.item))&&(e.type!=='refresh'||s.version>=2&&e.cost===SHOP_REFRESH_COST)&&(e.type!=='forge'||s.version>=2&&Number.isInteger(e.level)&&e.level>=1&&e.level<=2&&e.cost===FORGE_COSTS[e.level-1]&&Object.hasOwn(ITEMS,e.item))))return false;
  if(['battle','lost','won','camp'].includes(s.phase)&&(!s.enemy||!Number.isInteger(s.enemy.hp)||s.enemy.hp<0||s.enemy.hp>ENEMIES[s.floor].hp||!Number.isSafeInteger(s.enemy.block)||s.enemy.block<0||!Number.isInteger(s.enemy.intentIndex)||s.enemy.intentIndex<0||s.enemy.intentIndex>=ENEMIES[s.floor].intents.length))return false;
  if(s.phase==='prepare'&&(s.floor!==0||s.enemy!==null)||s.phase==='camp'&&(s.floor>=7||s.rewards.length!==3||s.offers.length!==3||s.enemy.hp!==0)||s.phase!=='lost'&&s.hp===0)return false;
  if(s.phase==='lost'&&s.hp!==0||s.phase==='won'&&(s.floor!==7||s.enemy.hp!==0)||s.phase==='battle'&&(s.hp===0||s.enemy.hp===0))return false;return true;
