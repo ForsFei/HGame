@@ -1,4 +1,4 @@
-import {COLS,ROWS,MAX_ITEMS,MAX_HP,ITEMS,ENEMIES,BUILDS,ROUTES,routeFor,routePreview,selectRoute,enemyStats,enemyTrait,combatPreview,itemLevel,resaleValue,forgePreview,forge,shape,cellsFor,occupants,effects,neighbours,createGame,place,stash,rotate,autoPlace,previewPlacement,createLayoutHistory,clearLayoutHistory,editLayout,undoLayout,redoLayout,intent,startBattle,activate,endTurn,takeReward,skipReward,shopRefreshPreview,refreshShop,buy,sell,rest,validSave} from './engine.js';
+import {COLS,ROWS,MAX_ITEMS,MAX_HP,buildAdvice,combatSlots,ITEMS,ENEMIES,BUILDS,ROUTES,routeFor,routePreview,selectRoute,enemyStats,enemyTrait,combatPreview,itemLevel,resaleValue,forgePreview,forge,shape,cellsFor,occupants,effects,neighbours,createGame,place,stash,rotate,autoPlace,previewPlacement,createLayoutHistory,clearLayoutHistory,editLayout,undoLayout,redoLayout,intent,startBattle,activate,endTurn,takeReward,skipReward,shopRefreshPreview,refreshShop,buy,sell,rest,validSave} from './engine.js';
 import {ensureRunId,readRecords,mergeRecords,recordRun,replayConfig} from './engine.js';
 const $=id=>document.getElementById(id),esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let state,selected=null,quiet=document.documentElement.dataset.view==='quiet',moving=false,anchor=null,storageWarning=false;
@@ -35,9 +35,28 @@ function render(){
  $('gridNote').textContent=quiet?'边邻接 = 地址单元共享一条边；角接触不计。':'边相邻触发加成；斜角接触不生效。';
  $('stashCount').textContent=`${state.items.filter(i=>i.x===null).length} ${quiet?'未加载':'件待装'} · ${state.items.length}/${MAX_ITEMS}`;
  $('inventory').innerHTML=state.items.filter(i=>i.x===null).map(i=>`<button data-select="${i.uid}" class="inventory-item ${selected===i.uid?'selected':''}"><b>${mark(i.type)}</b><span>${esc(rankedName(i))}</span><small>${shape(i.type,i.rotation).length} ${quiet?'地址':'格'}</small></button>`).join('')||`<p class="empty">${quiet?'所有模块均已加载。':'仓库空空的，新物品会放在这里。'}</p>`;
- renderDetail(current,editable);renderPlacement();renderHistory();renderEncounter();renderCamp();renderLog();renderHelp();renderRouteHelp();renderBuildForm();renderRuns();
+ renderAdvice();renderCombatTray();renderDetail(current,editable);renderPlacement();renderHistory();renderEncounter();renderCamp();renderLog();renderHelp();renderRouteHelp();renderPolishHelp();renderBuildForm();renderRuns();
  $('notice').textContent=storageWarning?'浏览器存储不可用，当前进度无法自动保存。':recordsWarning?'历史记录写入失败，请检查浏览器存储空间。':'';
 }
+function renderAdvice(){
+ const editable=['prepare','camp'].includes(state.phase);$('advicePanel').hidden=!editable;if(!editable)return;
+ const {issues,links}=buildAdvice(state),messages=quiet?{'no-weapon':'尚未加载指令模块，提交前至少加载一个。','idle-stone':'内联优化未邻接任何指令模块，当前无输出加成。','idle-quiver':'调用优化器未邻接 RPC 或 DMA，当前无优化收益。','idle-kit':'恢复钩子未邻接一次性补丁，当前无法触发修复与防护。','bow-edge':'RPC 尚未接触内存右边界，未触发边界输出 +4。',capacity:'模块数量已达 12；获取新依赖前可先回收旧模块。'}:{'no-weapon':'尚未装备武器，出发前至少装入一件。','idle-stone':'磨刀石没有边相邻武器，当前未提供伤害加成。','idle-quiver':'箭袋没有边相邻弓或弩，当前未提供加成。','idle-kit':'补给包没有边相邻消耗品，当前无法触发额外治疗与护甲。','bow-edge':'弓尚未接触背包最右边缘，未触发边缘伤害 +4。',capacity:'物品数量已达 12；领取或购买前可先出售旧物品。'};
+ $('adviceTitle').textContent=quiet?'布局诊断':'构筑提示';$('adviceCount').textContent=issues.length?`${issues.length} ${quiet?'项可检查':'项可改善'}`:(quiet?'未发现闲置邻接':'未发现闲置邻接');
+ $('adviceContent').innerHTML=(issues.length?`<ul>${issues.map(a=>`<li>${a.uid?`<button data-advice="${a.uid}">${esc(rankedName(state.items.find(i=>i.uid===a.uid)))}</button>`:''}<span>${esc(messages[a.code])}</span></li>`).join('')}</ul>`:`<p>${quiet?'当前支援模块均已建立有效邻接；这不代表整套模块已达到最优。':'当前支援物品都已触发邻接效果；仍可根据敌人和预算调整搭配。'}</p>`)+(links.length?`<p>${quiet?'有效依赖':'生效邻接'}：${links.map(link=>`${esc(name(state.items.find(i=>i.uid===link.uid).type))} → ${link.targets.length}`).join(' · ')}。</p>`:'')+`<p class="hint">${quiet?'仅检查当前已加载模块；未加载模块不参与诊断。点击条目定位，不自动改动映射。':'只检查已装备物品，仓库不参与；点击物品名查看详情，不会自动调整布局。'}</p>`;
+}
+function renderCombatTray(){
+ const battle=state.phase==='battle';$('combatTray').hidden=!battle;if(!battle)return;
+ $('combatTray').setAttribute('aria-label',quiet?'模块快捷选择':'装备快捷选择');$('combatTray').innerHTML=combatSlots(state).map(slot=>{const i=state.items.find(o=>o.uid===slot.uid),used=state.used.includes(i.uid);return `<button data-slot="${slot.uid}" aria-pressed="${selected===slot.uid}" class="${selected===slot.uid?'selected':''}"><kbd>${slot.key}</kbd> ${esc(rankedName(i))}${used?(quiet?' · 已执行':' · 已用'):''}</button>`;}).join('');
+}
+$('adviceContent').onclick=e=>{const b=e.target.closest('[data-advice]');if(b){selected=b.dataset.advice;moving=false;anchor=null;render();}};
+$('combatTray').onclick=e=>{const b=e.target.closest('[data-slot]');if(b)select(b.dataset.slot);};
+document.addEventListener('keydown',e=>{
+ if(e.defaultPrevented||e.repeat||e.isComposing||e.ctrlKey||e.metaKey||e.altKey||e.shiftKey||state.phase!=='battle'||document.querySelector('dialog[open]')||e.target.closest('input,textarea,select,[contenteditable]:not([contenteditable=false])'))return;
+ const number=/^(?:Digit|Numpad)([1-9])$/.exec(e.code),slot=number&&combatSlots(state).find(o=>o.key===number[1]);
+ if(number){if(slot){e.preventDefault();select(slot.uid);}return;}
+ if(e.code==='KeyQ'){e.preventDefault();if(!$('activate').disabled)$('activate').click();}
+ if(e.code==='KeyE'){e.preventDefault();$('endTurnQuick').click();}
+});
 function renderDetail(i,editable){
  const def=i&&ITEMS[i.type],e=i&&effects(state,i);$('itemKind').textContent=i?kind(i.type):'—';
  $('detail').innerHTML=i?`<div class="item-name"><span>${mark(i.type)}</span><h3>${esc(rankedName(i))}</h3></div><p>${esc(description(i.type,i))}</p><p class="detail-state">${i.x===null?(quiet?'未加载 · 当前不生效':'在仓库中 · 当前不生效'):quiet?`已映射 · 地址 0x${(i.y*COLS+i.x).toString(16).padStart(2,'0')}`:`已装备 · 锚点 ${String.fromCharCode(65+i.x)}${i.y+1}`}</p>${i.x!==null?`<div class="effect-line">${e.damage?`<b>${quiet?'输出':'伤害'} ${e.damage}</b>`:''}${e.block?`<b>${quiet?'防护':'护甲'} ${e.block}</b>`:''}${e.heal?`<b>${quiet?'修复':'治疗'} ${e.heal}</b>`:''}${e.energy?`<b>${quiet?'预算':'体力'} +${e.energy}</b>`:''}${def.cost!==undefined?`<span>${quiet?'预算成本':'体力消耗'} ${def.cost}</span>`:''}</div>`:''}${i.x!==null?`<p class="detail-state">${quiet?'邻接模块':'相邻物品'}：${esc(neighbours(state,i).map(o=>name(o.type)).join(' · ')||'—')}</p>`:''}<div class="shape-preview">${shape(i.type,i.rotation).map(([x,y])=>`<span style="grid-column:${x+1};grid-row:${y+1}"></span>`).join('')}</div>`:`<p class="empty">${quiet?'点击内存地址或未加载模块，检查布局与输出。':'点击背包或仓库中的物品，查看效果与形状。'}</p>`;
@@ -54,7 +73,7 @@ function renderDetail(i,editable){
   if(p.hp===0)summary.push('⚠ 本次执行将导致失败');
   $('detail').insertAdjacentHTML('beforeend',`<p class="combat-preview">${esc(summary.join(' · '))}</p>`);
  }
- $('endTurnQuick').hidden=state.phase!=='battle';$('endTurnQuick').textContent=quiet?'结束时间片 →':'结束回合 →';$('activate').hidden=state.phase!=='battle';$('activate').disabled=!i||i.x===null||def.kind==='passive'||state.used.includes(i.uid)||state.energy<def.cost;
+ $('endTurnQuick').hidden=state.phase!=='battle';$('endTurnQuick').textContent=quiet?'结束时间片 [E] →':'结束回合 [E] →';$('activate').textContent=quiet?'执行模块 [Q]':'使用物品 [Q]';$('combatKeys').hidden=state.phase!=='battle';$('combatKeys').textContent=quiet?'1–9 选择指令／防护模块 · Q 执行当前模块 · E 结束时间片。':'1–9 选择武器／护具 · Q 使用选中物品 · E 结束回合。';$('activate').hidden=state.phase!=='battle';$('activate').disabled=!i||i.x===null||def.kind==='passive'||state.used.includes(i.uid)||state.energy<def.cost;
  for(const id of ['rotate','stash','sell','placeSelected'])$(id).disabled=!i||!editable;
  renderForge(i);$('stash').disabled=!i||!editable||i.x===null;$('sell').textContent=i?`${quiet?'回收':'出售'} +${resaleValue(i)}`:(quiet?'回收模块':'出售');
 }
@@ -79,7 +98,7 @@ function renderEncounter(){
  $('enemyTrait').classList.toggle('elite',Boolean(trait));$('enemyTrait').innerHTML=trait?`<b>${camp?(quiet?'下层协议':'下层精英特性'):(quiet?'目标协议':'精英特性')} · ${quiet?trait.quiet:trait.name}</b><p>${esc(quiet?trait.qdesc:trait.desc)}</p>`:`<p>${state.version===1?(quiet?'经典协议：当前运行不启用新增约束。':'经典存档：本局不启用新增精英特性。'):(quiet?'常规协议：无额外约束。':'普通敌人：无额外特性。')}</p>`;
  renderRoutes(preview);
  $('battleHint').textContent=quiet?'每个时间片恢复 3 预算，临时防护重新初始化。相同模块每时间片限执行一次。':'每回合恢复 3 体力，旧护甲清空。每件物品每回合限用一次；敌方行动后进入下一回合。';
- $('start').hidden=!['prepare','camp'].includes(state.phase);$('start').disabled=camp&&!state.rewardTaken;$('start').textContent=camp?(quiet?'提交布局，进入下一层 →':'进入下一层 →'):(quiet?'提交布局并运行 →':'进入战斗 →');$('endTurn').hidden=!battle;if(['prepare','camp'].includes(state.phase)&&preview.route==='supply'){$('enemyName').textContent=quiet?'next: recovery-node':'下一层 · 补给点';$('enemyVitals').textContent=quiet?'无执行压力 · 修复最多 8 完整度':'无战斗 · 恢复最多 8 生命';$('start').textContent=quiet?'提交路线，执行恢复 →':'进入补给点 →';}
+ $('start').hidden=!['prepare','camp'].includes(state.phase);$('start').disabled=camp&&!state.rewardTaken;$('start').textContent=camp?(quiet?'提交布局，进入下一层 →':'进入下一层 →'):(quiet?'提交布局并运行 →':'进入战斗 →');$('endTurn').hidden=!battle;$('endTurn').textContent=quiet?'结束时间片 [E] →':'结束回合 [E] →';if(['prepare','camp'].includes(state.phase)&&preview.route==='supply'){$('enemyName').textContent=quiet?'next: recovery-node':'下一层 · 补给点';$('enemyVitals').textContent=quiet?'无执行压力 · 修复最多 8 完整度':'无战斗 · 恢复最多 8 生命';$('start').textContent=quiet?'提交路线，执行恢复 →':'进入补给点 →';}
  $('ending').hidden=!['won','lost'].includes(state.phase);$('endKicker').textContent=quiet?'PROCESS EXIT':'EXPEDITION COMPLETE';$('endTitle').textContent=state.phase==='won'?(quiet?'全部目标已退出':'八层通关！'):(quiet?'运行完整度耗尽':'这一程，到这里休息');$('endText').textContent=quiet?`已处理深度 ${state.floor+1} / 8。调整模块邻接后，可以重启相同种子。`:`到达第 ${state.floor+1} / 8 层。${state.phase==='won'?'这只小背包，装下了一整段旅程。':'试试让磨刀石贴近多件武器，并保留防御和恢复手段。'}`;
 }
 function renderRoutes(preview){
@@ -127,6 +146,9 @@ function openRuns(){reviewId='current';renderRuns();$('runsDialog').showModal();
 $('runs').onclick=$('reviewEnd').onclick=openRuns;$('closeRuns').onclick=()=>$('runsDialog').close();
 $('cancelReplay').onclick=()=>$('replayDialog').close();
 $('confirmReplay').onclick=()=>{if(!pendingReplay)return;const {seed,...config}=pendingReplay;execute(()=>{state=createGame(seed,config);selected=null;});pendingReplay=null;$('replayDialog').close();$('runsDialog').close();};
+function renderPolishHelp(){
+ $('helpContent').insertAdjacentHTML('beforeend',`<p>${quiet?'布局诊断仅检查已加载模块，指出闲置内联优化、调用优化器、恢复钩子和 RPC 边界优化；点击条目只定位模块，不改动映射。':'构筑提示只检查已装备物品，指出没有邻接目标的磨刀石、箭袋、补给包，以及未贴右边的弓。点击物品名只查看，不自动摆放。'}${quiet?'执行中按 1–9 选择指令或防护模块，Q 执行当前模块（可包含补丁），E 结束时间片。':'战斗中按 1–9 选择武器或护具，Q 使用当前选中物品（可包含消耗品），E 结束回合。'}编号按布局从上到下、从左到右排列，最多九个；消耗品不占编号，使用后不会改变装备编号。输入框、选择框、可编辑区域和弹窗中不触发；长按不连发，组合键不触发战斗动作。</p>`);
+}
 function renderRouteHelp(){
  $('helpContent').insertAdjacentHTML('beforeend',`<p>${quiet?'v3 路由：深度 2–7 可选常规节点、压力测试或恢复节点。压力测试目标负载 ×1.25 向上取整，压力／屏障中断 +2，退出基础回收额外 +4。恢复节点跳过执行，修复最多 8 完整度，仅提供三种补丁依赖，无退出回收与资源回收器收益。入口与根节点固定，原有深度约束仍生效。':'v3 分岔路线：第 2–7 层可选常规战、精英战或补给点。精英生命 ×1.25 向上取整，攻击与防御行动 +2，胜利额外 +4 金币；原有固定层精英特性继续生效。补给点跳过战斗，恢复最多 8 生命，只提供药草、活力瓶、爆裂瓶三选一，无战斗金币和拾荒袋收益。首层与最终守卫固定。'}${quiet?'节点路由在提交后锁定，并保存在逐层 trace；旧 v1/v2 保留固定路径。同种子重启保留版本，可重新选择分支。':'路线选择在出发后锁定，保存在逐层回顾；旧 v1/v2 保留固定路线。同种子重开保留版本，可重新选择路线。'}</p>`);
 }

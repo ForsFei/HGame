@@ -218,3 +218,20 @@ export function recordRun(rows,s,endedAt=new Date().toISOString()){
  return [record,...rows].slice(0,RECORD_LIMIT);
 }
 export const replayConfig=r=>({seed:r.state.seed,version:r.state.version,build:r.state.build||'balanced'});
+
+// Advisory checks never move inventory or change combat outcomes.
+export function buildAdvice(s){
+ const equipped=s.items.filter(i=>i.x!==null),issues=[],links=[];
+ if(!equipped.some(i=>ITEMS[i.type].kind==='weapon'))issues.push({code:'no-weapon',uid:null});
+ for(const i of equipped){
+  const near=neighbours(s,i);let targets=null;
+  if(i.type==='stone')targets=near.filter(o=>ITEMS[o.type].kind==='weapon');
+  if(i.type==='quiver')targets=near.filter(o=>ITEMS[o.type].ranged);
+  if(i.type==='kit')targets=near.filter(o=>ITEMS[o.type].kind==='consume');
+  if(targets){if(targets.length)links.push({uid:i.uid,targets:targets.map(o=>o.uid)});else issues.push({code:`idle-${i.type}`,uid:i.uid});}
+  if(i.type==='bow'&&!cellsFor(i).some(([x])=>x===COLS-1))issues.push({code:'bow-edge',uid:i.uid});
+ }
+ if(s.items.length>=MAX_ITEMS)issues.push({code:'capacity',uid:null});
+ return {issues,links};
+}
+export function combatSlots(s){return s.items.filter(i=>i.x!==null&&['weapon','guard'].includes(ITEMS[i.type].kind)).sort((a,b)=>a.y-b.y||a.x-b.x||a.uid.localeCompare(b.uid)).slice(0,9).map((i,n)=>({uid:i.uid,key:String(n+1)}));}
