@@ -44,12 +44,25 @@ export const ENEMIES=[
 const fail=message=>{throw Error(message);};
 const item=(s,uid)=>s.items.find(i=>i.uid===uid)||fail('找不到这件物品');
 const editable=s=>{if(!['prepare','camp'].includes(s.phase))fail('只能在整备阶段调整布局');};
+export const FORGE_COSTS=[5,8];
+export const itemLevel=i=>i.level===undefined?0:i.level;
+export const resaleValue=i=>Math.floor((ITEMS[i.type].price+FORGE_COSTS.slice(0,itemLevel(i)).reduce((sum,cost)=>sum+cost,0))/2);
+export function forgePreview(s,uid){
+ const i=item(s,uid),level=itemLevel(i),kind=ITEMS[i.type].kind,supported=['weapon','guard'].includes(kind),stat=kind==='weapon'?'damage':'block';
+ const cost=FORGE_COSTS[level]??null,reason=s.version<2?'classic':!supported?'unsupported':level>=2?'max':s.phase!=='camp'?'camp':s.gold<cost?'funds':null;
+ const before=effects(s,i)[stat],after=supported&&level<2?before+3:before;
+ return {level,nextLevel:Math.min(2,level+1),cost,stat,before,after,reason,canForge:reason===null,resale:resaleValue(i),nextResale:supported&&level<2?resaleValue({...i,level:level+1}):resaleValue(i)};
+}
+export function forge(s,uid){
+ const p=forgePreview(s,uid);if(!p.canForge)fail(({classic:'经典存档不启用锻造，请新建 v2 对局',unsupported:'被动物品与消耗品不能锻造',max:'此物品已达到强化上限',camp:'只能在营地锻造',funds:'金币不足，无法锻造'})[p.reason]);
+ const i=item(s,uid);s.gold-=p.cost;i.level=p.nextLevel;log(s,{type:'forge',item:i.type,level:i.level,cost:p.cost});
+}
 export function shape(type,rotation=0){let cells=ITEMS[type].shape.map(p=>[...p]);for(let n=0;n<rotation;n++)cells=cells.map(([x,y])=>[-y,x]);const minX=Math.min(...cells.map(p=>p[0])),minY=Math.min(...cells.map(p=>p[1]));return cells.map(([x,y])=>[x-minX,y-minY]);}
 export const cellsFor=i=>i.x===null?[]:shape(i.type,i.rotation).map(([x,y])=>[x+i.x,y+i.y]);
 export function occupants(s){const map=new Map();for(const i of s.items)for(const [x,y]of cellsFor(i))map.set(`${x},${y}`,i.uid);return map;}
 export function fits(s,i,x,y,rotation=i.rotation){const occupied=occupants({...s,items:s.items.filter(o=>o.uid!==i.uid)});return shape(i.type,rotation).every(([dx,dy])=>x+dx>=0&&x+dx<COLS&&y+dy>=0&&y+dy<ROWS&&!occupied.has(`${x+dx},${y+dy}`));}
 export function neighbours(s,i){const mine=cellsFor(i),near=new Set(mine.flatMap(([x,y])=>[[x-1,y],[x+1,y],[x,y-1],[x,y+1]].map(p=>p.join(','))));return s.items.filter(o=>o.uid!==i.uid&&cellsFor(o).some(p=>near.has(p.join(','))));}
-export function effects(s,i){const def=ITEMS[i.type],near=neighbours(s,i),kits=def.kind==='consume'?near.filter(o=>o.type==='kit').length:0;return {damage:(def.damage||0)+(def.kind==='weapon'?near.filter(o=>o.type==='stone').length*3:0)+(i.type==='dagger'?near.filter(o=>ITEMS[o.type].kind==='weapon').length*2:0)+(i.type==='bow'&&cellsFor(i).some(([x])=>x===COLS-1)?4:0)+(def.ranged?near.filter(o=>o.type==='quiver').length*4:0)+(i.type==='bash'&&s.phase==='battle'?Math.min(12,Math.floor(s.block/2)):0),block:(def.block||0)+(['shield','tower'].includes(i.type)?near.filter(o=>o.type==='armor').length*2:0)+kits*3,heal:(def.heal||0)+kits*3,energy:def.energy||0};}
+export function effects(s,i){const def=ITEMS[i.type],near=neighbours(s,i),kits=def.kind==='consume'?near.filter(o=>o.type==='kit').length:0;return {damage:(def.damage||0)+(def.kind==='weapon'?itemLevel(i)*3+near.filter(o=>o.type==='stone').length*3:0)+(i.type==='dagger'?near.filter(o=>ITEMS[o.type].kind==='weapon').length*2:0)+(i.type==='bow'&&cellsFor(i).some(([x])=>x===COLS-1)?4:0)+(def.ranged?near.filter(o=>o.type==='quiver').length*4:0)+(i.type==='bash'&&s.phase==='battle'?Math.min(12,Math.floor(s.block/2)):0),block:(def.block||0)+(def.kind==='guard'?itemLevel(i)*3:0)+(['shield','tower'].includes(i.type)?near.filter(o=>o.type==='armor').length*2:0)+kits*3,heal:(def.heal||0)+kits*3,energy:def.energy||0};}
 function rng(text){let n=2166136261;for(const c of text)n=Math.imul(n^c.charCodeAt(0),16777619)>>>0;return()=>{n=(n+0x6D2B79F5)>>>0;let t=n;t=Math.imul(t^(t>>>15),t|1);t^=t+Math.imul(t^(t>>>7),t|61);return ((t^(t>>>14))>>>0)/4294967296;};}
 function sample(keys,random,count){const a=[...keys];for(let i=a.length-1;i>0;i--){const j=Math.floor(random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a.slice(0,count);}
 const log=(s,event)=>{s.log=[event,...s.log].slice(0,30);};
@@ -126,7 +139,7 @@ export function endTurn(s){if(s.phase!=='battle')fail('当前不在战斗阶段'
 export function takeReward(s,index){if(s.phase!=='camp'||s.rewardTaken||!s.rewards[index])fail('奖励不可领取');if(s.items.length>=MAX_ITEMS)fail('仓库已满，请先出售物品或跳过奖励');const i=add(s,s.rewards[index]);s.rewardTaken=true;log(s,{type:'loot',item:i.type});return i.uid;}
 export function skipReward(s){if(s.phase!=='camp'||s.rewardTaken)fail('奖励不可领取');s.rewardTaken=true;s.gold+=3;log(s,{type:'skip'});}
 export function buy(s,index){const o=s.offers[index];if(s.phase!=='camp'||!o||o.bought)fail('商品不可购买');if(s.items.length>=MAX_ITEMS)fail('仓库已满，请先出售物品');if(s.gold<ITEMS[o.type].price)fail('金币不足');s.gold-=ITEMS[o.type].price;const i=add(s,o.type);o.bought=true;log(s,{type:'buy',item:i.type});return i.uid;}
-export function sell(s,uid){editable(s);const i=item(s,uid);if(s.items.filter(o=>ITEMS[o.type].kind==='weapon').length===1&&ITEMS[i.type].kind==='weapon')fail('至少保留一件武器');s.gold+=Math.floor(ITEMS[i.type].price/2);s.items=s.items.filter(o=>o.uid!==uid);log(s,{type:'sell',item:i.type});}
+export function sell(s,uid){editable(s);const i=item(s,uid);if(s.items.filter(o=>ITEMS[o.type].kind==='weapon').length===1&&ITEMS[i.type].kind==='weapon')fail('至少保留一件武器');s.gold+=resaleValue(i);s.items=s.items.filter(o=>o.uid!==uid);log(s,{type:'sell',item:i.type});}
 export function rest(s){if(s.phase!=='camp'||s.rested||s.hp===MAX_HP||s.gold<4)fail('本次无法休整：需要 4 金币且生命未满');s.gold-=4;s.hp=Math.min(MAX_HP,s.hp+10);s.rested=true;log(s,{type:'rest'});}
 export function validSave(s){
  if(!s||![1,2].includes(s.version)||!['prepare','battle','camp','won','lost'].includes(s.phase)||!Number.isInteger(s.floor)||s.floor<0||s.floor>7||typeof s.seed!=='string'||!/^[A-Z0-9-]{1,24}$/.test(s.seed))return false;
@@ -135,9 +148,10 @@ export function validSave(s){
  if(!['hp','gold','turn','energy','block','nextId'].every(k=>Number.isSafeInteger(s[k])&&s[k]>=0)||s.hp>MAX_HP||s.energy>7||s.nextId<1)return false;
  if(!Array.isArray(s.items)||s.items.length>MAX_ITEMS||new Set(s.items.map(i=>i?.uid)).size!==s.items.length||!s.items.every(i=>i&&/^i[1-9]\d*$/.test(i.uid)&&Number(i.uid.slice(1))<s.nextId&&Object.hasOwn(ITEMS,i.type)&&Number.isInteger(i.rotation)&&i.rotation>=0&&i.rotation<4&&(i.x===null&&i.y===null||Number.isInteger(i.x)&&Number.isInteger(i.y))))return false;
  if(!s.items.every(i=>i.x===null||fits(s,i,i.x,i.y)))return false;
+ if(!s.items.every(i=>Number.isInteger(itemLevel(i))&&itemLevel(i)>=0&&itemLevel(i)<=2&&(itemLevel(i)===0||s.version>=2&&['weapon','guard'].includes(ITEMS[i.type].kind))))return false;
  if(!Array.isArray(s.used)||s.used.length>MAX_ITEMS||new Set(s.used).size!==s.used.length||!s.used.every(id=>typeof id==='string'&&/^i[1-9]\d*$/.test(id)&&Number(id.slice(1))<s.nextId)||typeof s.rewardTaken!=='boolean'||typeof s.rested!=='boolean')return false;
  if(!Array.isArray(s.rewards)||s.rewards.length>3||!s.rewards.every(t=>Object.hasOwn(ITEMS,t))||!Array.isArray(s.offers)||s.offers.length>3||!s.offers.every(o=>o&&Object.hasOwn(ITEMS,o.type)&&typeof o.bought==='boolean'))return false;
- if(!Array.isArray(s.log)||s.log.length>30||!s.log.every(e=>e&&['start','win','use','hit','guard','loot','skip','buy','sell','rest','reflect'].includes(e.type)&&(e.item===undefined||Object.hasOwn(ITEMS,e.item))))return false;
+ if(!Array.isArray(s.log)||s.log.length>30||!s.log.every(e=>e&&['start','win','use','hit','guard','loot','skip','buy','sell','rest','reflect','forge'].includes(e.type)&&(e.item===undefined||Object.hasOwn(ITEMS,e.item))&&(e.type!=='forge'||s.version>=2&&Number.isInteger(e.level)&&e.level>=1&&e.level<=2&&e.cost===FORGE_COSTS[e.level-1]&&Object.hasOwn(ITEMS,e.item))))return false;
  if(['battle','lost','won','camp'].includes(s.phase)&&(!s.enemy||!Number.isInteger(s.enemy.hp)||s.enemy.hp<0||s.enemy.hp>ENEMIES[s.floor].hp||!Number.isSafeInteger(s.enemy.block)||s.enemy.block<0||!Number.isInteger(s.enemy.intentIndex)||s.enemy.intentIndex<0||s.enemy.intentIndex>=ENEMIES[s.floor].intents.length))return false;
  if(s.phase==='prepare'&&(s.floor!==0||s.enemy!==null)||s.phase==='camp'&&(s.floor>=7||s.rewards.length!==3||s.offers.length!==3||s.enemy.hp!==0)||s.phase!=='lost'&&s.hp===0)return false;
  if(s.phase==='lost'&&s.hp!==0||s.phase==='won'&&(s.floor!==7||s.enemy.hp!==0)||s.phase==='battle'&&(s.hp===0||s.enemy.hp===0))return false;return true;
