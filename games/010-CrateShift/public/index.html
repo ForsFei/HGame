@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>托盘上架 · HGame</title><link rel="icon" href="data:,"><script>try{if(localStorage.getItem('crateshift-view')==='quiet'){document.documentElement.dataset.view='quiet';document.title='库位归位 · 本地';}}catch{}</script><link rel="stylesheet" href="./quiet.css"><link rel="stylesheet" href="./style.css"></head>
+<body>
+<header><a class="brand" id="brand" href="#">H▧GAME <span>/ 010</span></a><nav><button id="view" title="切换简洁模式（Alt+M）">简洁模式</button><button id="help">玩法说明</button><button id="reset">重开本关</button></nav></header>
+<main>
+<section class="intro"><div><p class="eyebrow" id="eyebrow">PUSH. PARK. CLEAR.</p><h1 id="title">托盘上架</h1><p id="subtitle">把每个托盘推进标记的库位，箱子只能推不能拉。</p></div><div class="readout"><div><small id="movesLabel">步数</small><b id="moves">0</b></div><div><small id="pushesLabel">推动</small><b id="pushes">0</b></div><div><small id="timerLabel">用时</small><b id="timer">00:00</b></div></div></section>
+<p id="notice" class="notice" role="status" aria-live="polite"></p>
+<div class="layout"><section class="panel board-panel"><div id="board" class="board" role="grid" aria-label="仓库棋盘"></div><div class="pad" id="pad"><button data-dir="up" aria-label="上">↑</button><button data-dir="left" aria-label="左">←</button><button data-dir="down" aria-label="下">↓</button><button data-dir="right" aria-label="右">→</button></div><div class="result" id="result" hidden><div><h2 id="resultTitle"></h2><p id="resultText"></p></div><button id="next" class="primary">下一关</button></div></section>
+<aside>
+ <section class="panel"><div class="section-heading"><h2 id="levelTitle">关卡</h2><span id="levelTag">LEVEL</span></div><div id="levels" class="levels"></div><div class="actions"><button id="undo">撤销</button><button id="retry">重开本关</button></div></section>
+ <section class="panel"><div class="section-heading"><h2 id="recordsTitle">最佳成绩</h2><span id="recordsTag">BEST</span></div><p id="progress" class="progress"></p><div id="records" class="records"></div></section>
+ <section class="panel"><div class="section-heading"><h2 id="hintTitle">怎么推箱</h2><span id="hintTag">RULE</span></div><div id="legend" class="legend"></div><p id="hintText" class="hint"></p></section>
+</aside></div>
+<footer><span id="footer">托盘上架 · 离线单人 · 原创规则与界面</span><span id="footerTag">方向键移动 · Z 撤销 · Alt+M</span></footer>
+</main>
+<dialog id="helpDialog"><h2 id="helpTitle">玩法说明</h2><div id="helpContent"></div><button id="closeHelp" class="primary">明白了</button></dialog>
+<dialog id="newDialog"><h2 id="newTitle">切换关卡？</h2><p id="newHint">当前进度会被覆盖。</p><div class="dialog-actions"><button id="cancelNew">继续当前关卡</button><button id="confirmNew" class="primary">确认切换</button></div></dialog>
+<script type="module" src="./app.js"></script></body></html>

@@ -1,0 +1,43 @@
+/* 安静视图：本地工具感的浅色配色，仅覆盖必要部分 */
+html[data-view=quiet]{
+ --q-bg:#f2f6fa;
+ --q-panel:#ffffff;
+ --q-raised:#f5f9fc;
+ --q-line:#d9e3ee;
+ --q-text:#1b2a3a;
+ --q-muted:#5d7488;
+ --q-accent:#33608c;
+ color-scheme:light;
+}
+html[data-view=quiet] body{background:linear-gradient(180deg,#f9fcfe 0%,#edf3fa 100%)}
+html[data-view=quiet] header{background:#fff;border-bottom-color:#dde7f1}
+[data-view=quiet] button{background:#fff;border-color:#d7e2ee;color:#243748}
+[data-view=quiet] button:hover:not(:disabled){background:#f4f8fc;border-color:#33608c}
+[data-view=quiet] button.primary{background:#33608c;border-color:#33608c;color:#fff}
+[data-view=quiet] button.primary:hover:not(:disabled){background:#2a527a;border-color:#2a527a}
+html[data-view=quiet] button:focus-visible,
+html[data-view=quiet] a:focus-visible{outline-color:#33608c}
+html[data-view=quiet] .panel{background:#fff;border-color:#dde6f0}
+html[data-view=quiet] .intro h1{color:#16273a}
+html[data-view=quiet] .eyebrow{color:#6b8499}
+html[data-view=quiet] .readout small{color:#6b8499}
+html[data-view=quiet] .notice{color:#4b6a85}
+html[data-view=quiet] .board{background:#fff;border:1px solid #e2eaf3;padding:10px}
+html[data-view=quiet] .cell.floor{background:#fbfdff;border-color:#e6edf5}
+html[data-view=quiet] .cell.wall{background:#e4ecf4;border-color:#d2dde8}
+html[data-view=quiet] .cell.goal::before{border-color:#a9c3d9}
+html[data-view=quiet] .cell.me::after{box-shadow:none}
+html[data-view=quiet] .levels button{background:#fbfdff}
+html[data-view=quiet] .levels button.active{background:#eaf1f8;border-color:#33608c;color:#274d74}
+html[data-view=quiet] .levels button.active small{color:#5c7d9c}
+html[data-view=quiet] .record{border-bottom-color:#e6edf5}
+html[data-view=quiet] .result{border-top-color:#e3ebf4}
+html[data-view=quiet] .pad button{background:#fff}
+html[data-view=quiet] .pad button:active{background:#eaf1f8}
+html[data-view=quiet] dialog{background:#fff;border-color:#dbe5ef;box-shadow:0 18px 50px #101d2b1f}
+html[data-view=quiet] dialog::backdrop{background:#1b2a3a4d;backdrop-filter:blur(1px)}
+html[data-view=quiet] footer{border-top-color:#e0e8f1;color:#71879a}
+
+@media(prefers-reduced-motion:reduce){
+ html[data-view=quiet] *{transition:none}
+}

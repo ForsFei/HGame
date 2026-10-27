@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>算力调度站 · HGame</title><link rel="icon" href="data:,"><script>try{if(localStorage.getItem('computeflow-view')==='quiet'){document.documentElement.dataset.view='quiet';document.title='配额监控 · 本地';}}catch{}</script><link rel="stylesheet" href="./style.css"></head>
+<body>
+<header><a class="brand" id="brand" href="#">H▧GAME <span>/ 006</span></a><nav><button id="autoButton" aria-pressed="false">自动扩容：关</button><button id="view" title="切换简洁模式（Alt+M）">简洁模式</button><button id="help">玩法说明</button><button id="reset">重置</button></nav></header>
+<main>
+<section class="intro"><div><p class="eyebrow" id="eyebrow">ALLOCATE. EXPAND. REPEAT.</p><h1 id="title">算力调度站</h1><p id="subtitle">把每一份算力派到该去的地方，让集群自己生长。</p></div>
+<div class="readout"><div class="big"><small id="creditsLabel">总算力</small><b id="credits">0</b></div><div><small id="rateLabel">产出</small><b id="rate">0/s</b></div></div></section>
+<p class="notice" id="notice" role="status" aria-live="polite"></p>
+<div class="layout"><section class="panel nodes-panel">
+ <div class="node-head"><span id="colName">节点</span><span id="colCount">数量</span><span id="colRate">产出</span><span id="colCost">扩容</span></div>
+ <div id="nodes" class="nodes"></div>
+</section>
+<aside>
+ <section class="panel"><div class="section-heading"><h2 id="goalTitle">下一个目标</h2><span id="goalTag"></span></div><div id="goal"></div></section>
+ <section class="panel"><div class="section-heading"><h2 id="statsTitle">运行概况</h2><span id="statsTag">LOCAL</span></div><div id="stats" class="stats"></div></section>
+ <section class="panel"><div class="section-heading"><h2 id="hintTitle">调度建议</h2><span id="hintTag"></span></div><p id="hintText" class="hint"></p></section>
+</aside></div>
+<footer><span id="footer">算力调度站 · 离线单人 · 原创规则与界面</span><span id="footerTag">自动保存 · Alt+M</span></footer>
+</main>
+<dialog id="helpDialog"><h2 id="helpTitle">玩法说明</h2><div id="helpContent"></div><button id="closeHelp" class="primary">明白了</button></dialog>
+<dialog id="resetDialog"><h2 id="resetTitle">清空当前集群？</h2><p id="resetHint">会删除全部节点与算力，无法撤销。</p><div class="dialog-actions"><button id="cancelReset">保留当前进度</button><button id="confirmReset" class="primary">确认清空</button></div></dialog>
+<script type="module" src="./app.js"></script></body></html>

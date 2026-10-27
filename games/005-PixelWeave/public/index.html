@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>像素织图 · HGame</title><link rel="icon" href="data:,"><script>try{if(localStorage.getItem('pixelweave-view')==='quiet'){document.documentElement.dataset.view='quiet';document.title='位图索引 · 本地';}}catch{}</script><link rel="stylesheet" href="./style.css"></head>
+<body>
+<header><a class="brand" id="brand" href="#">H▧GAME <span>/ 005</span></a><nav><button id="dailyButton">每日挑战</button><button id="recordsButton">本地记录</button><button id="view" title="切换简洁模式（Alt+M）">简洁模式</button><button id="help">玩法说明</button><button id="newGame">新的一局</button></nav></header>
+<main>
+<section class="intro"><div><p class="eyebrow" id="eyebrow">READ THE ROWS. WEAVE THE GRID.</p><h1 id="title">像素织图</h1><p id="subtitle">每一行数字，都是一段连续涂黑的长度。</p></div><div class="run-meta"><span id="modeTag"></span><b id="sizeTag"></b><span id="progressTag"></span></div></section>
+<section class="daily" id="daily"><div><b id="dailyTitle">每日挑战</b><p id="dailyHint"></p></div><div class="daily-actions"><button id="dailyPlay" class="primary">开始今日</button><button id="dailyRecords">今日记录</button></div></section>
+<div class="layout"><section class="workspace">
+ <section class="board-panel"><div class="board-head"><span id="boardTitle">织格</span><span id="boardHint"></span></div>
+  <div id="board" class="board"><div class="corner"></div><div id="colClues" class="col-clues"></div><div id="rowClues" class="row-clues"></div><div id="grid" class="grid" role="grid" aria-label="像素织图棋盘"></div></div>
+  <p id="boardStatus" class="board-status" role="status" aria-live="polite"></p>
+  <div class="toolbar"><button id="check" class="primary">检查</button><button id="undo">撤销</button><button id="clear">清除</button><span id="fillTag"></span></div>
+ </section>
+ <section class="result" id="result" hidden><div class="result-head"><h2 id="resultTitle"></h2><span id="resultTag"></span></div><p id="resultText"></p><div class="result-actions"><button id="next" class="primary">下一关</button></div></section>
+</section>
+<aside>
+ <section class="panel"><div class="section-heading"><h2 id="legendTitle">怎么读线索</h2><span id="legendTag">RULE</span></div><div id="legend" class="legend"></div><p id="legendHint" class="hint"></p></section>
+ <section class="panel"><div class="section-heading"><h2 id="sizeTitle">棋盘规模</h2><span id="sizeTagSide"></span></div><div id="sizes" class="sizes"></div><p id="sizeHint" class="hint"></p></section>
+ <section class="panel"><div class="section-heading"><h2 id="statsTitle">本地统计</h2><span id="statsTag"></span></div><div class="stat-grid"><div><small id="statDoneLabel">完成</small><b id="statDone">0</b></div><div><small id="statDailyLabel">每日</small><b id="statDaily">0</b></div></div><div id="records" class="records"></div></section>
+</aside></div>
+<footer><span id="footer">像素织图 · 离线单人 · 原创规则与界面</span><span id="footerTag">自动保存 · Alt+M</span></footer>
+</main>
+<dialog id="helpDialog"><h2 id="helpTitle">玩法说明</h2><div id="helpContent"></div><button id="closeHelp" class="primary">明白了</button></dialog>
+<dialog id="recordsDialog"><h2 id="recordsTitle">本地记录</h2><p id="recordsSummary"></p><div id="recordsList"></div><button id="closeRecords" class="primary">关闭</button></dialog>
+<dialog id="newDialog"><h2 id="newTitle">开始新的一局？</h2><p id="newHint">将覆盖当前自动存档。</p><div class="dialog-actions"><button id="cancelNew">继续当前进度</button><button id="confirmNew" class="primary">确认新建</button></div></dialog>
+<script type="module" src="./app.js"></script></body></html>

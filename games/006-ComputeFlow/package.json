@@ -1,0 +1,1 @@
+{"name":"computeflow","version":"1.0.0","private":true,"type":"module","scripts":{"start":"node server.mjs","test":"node --test","simulate":"node scripts/simulate.mjs 60"},"engines":{"node":">=22"}}
