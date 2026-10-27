@@ -46,6 +46,42 @@ export function place(s,uid,x,y){editable(s);const i=item(s,uid);if(!Number.isIn
 export function stash(s,uid){editable(s);Object.assign(item(s,uid),{x:null,y:null});}
 export function rotate(s,uid){editable(s);const i=item(s,uid),rotation=(i.rotation+1)%4;if(i.x!==null&&!fits(s,i,i.x,i.y,rotation))fail('旋转后空间不足，请先移回仓库');i.rotation=rotation;}
 export function autoPlace(s,uid){editable(s);const i=item(s,uid);for(let y=0;y<ROWS;y++)for(let x=0;x<COLS;x++)if(fits(s,i,x,y)){place(s,uid,x,y);return;}fail('当前方向没有可用空间，可旋转后重试');}
+export function previewPlacement(s,uid,x,y){
+ editable(s);const i=item(s,uid);if(!Number.isInteger(x)||!Number.isInteger(y))fail('落点坐标无效');
+ const cells=shape(i.type,i.rotation).map(([dx,dy])=>[x+dx,y+dy]),occupied=occupants({...s,items:s.items.filter(o=>o.uid!==uid)});
+ const outOfBounds=cells.filter(([cx,cy])=>cx<0||cx>=COLS||cy<0||cy>=ROWS).length;
+ const conflicts=[...new Set(cells.map(p=>occupied.get(p.join(','))).filter(Boolean))],valid=outOfBounds===0&&conflicts.length===0,changes=[];
+ if(valid){
+  const candidate={...s,items:s.items.map(o=>o.uid===uid?{...o,x,y}:o)};
+  for(const after of candidate.items){
+   const before=s.items.find(o=>o.uid===after.uid),a=after.x===null?{damage:0,block:0}:effects(candidate,after),b=before.x===null?{damage:0,block:0}:effects(s,before);
+   for(const stat of ['damage','block'])if(a[stat]!==b[stat])changes.push({uid:after.uid,type:after.type,stat,before:b[stat],after:a[stat]});
+  }
+ }
+ return {valid,cells,outOfBounds,conflicts,changes};
+}
+const layoutSnapshot=s=>s.items.map(({uid,type,x,y,rotation})=>({uid,type,x,y,rotation}));
+const layoutKey=s=>`${s.phase}/${s.floor}/${s.items.map(i=>`${i.uid}:${i.type}`).join(',')}`;
+export const createLayoutHistory=s=>({key:layoutKey(s),current:JSON.stringify(layoutSnapshot(s)),past:[],future:[]});
+export function clearLayoutHistory(s,h){Object.assign(h,createLayoutHistory(s));}
+function historyMatches(s,h){return h.key===layoutKey(s)&&h.current===JSON.stringify(layoutSnapshot(s));}
+export function editLayout(s,h,action,uid,...args){
+ editable(s);const actions={place,stash,rotate,autoPlace};if(!Object.hasOwn(actions,action))fail('未知布局操作');const fn=actions[action];
+ if(!historyMatches(s,h))clearLayoutHistory(s,h);
+ const before=layoutSnapshot(s);fn(s,uid,...args);const current=JSON.stringify(layoutSnapshot(s));
+ if(current===h.current)return false;
+ h.past.push(before);h.past=h.past.slice(-20);h.future=[];h.current=current;return true;
+}
+function restoreLayout(s,h,direction){
+ editable(s);if(!historyMatches(s,h)){clearLayoutHistory(s,h);fail('布局历史已重置，请从当前布局继续');}
+ const source=direction==='undo'?h.past:h.future,target=direction==='undo'?h.future:h.past,snapshot=source.at(-1);
+ if(!snapshot)fail(direction==='undo'?'没有可撤销的布局':'没有可重做的布局');
+ const items=s.items.map(i=>({...i,...snapshot.find(o=>o.uid===i.uid)}));
+ const candidate={...s,items};if(!items.every(i=>i.x===null||fits(candidate,i,i.x,i.y)))fail('历史布局不再适用');
+ target.push(layoutSnapshot(s));source.pop();s.items=items;h.current=JSON.stringify(layoutSnapshot(s));
+}
+export const undoLayout=(s,h)=>restoreLayout(s,h,'undo');
+export const redoLayout=(s,h)=>restoreLayout(s,h,'redo');
 export function intent(s){return ENEMIES[s.floor].intents[s.enemy?.intentIndex||0];}
 function startTurn(s){s.energy=3;s.block=s.items.filter(i=>i.x!==null&&i.type==='armor').length*4;s.used=[];}
 export function startBattle(s){if(!['prepare','camp'].includes(s.phase))fail('当前不能进入战斗');if(s.phase==='camp'&&!s.rewardTaken)fail('请先选择或跳过奖励');if(!s.items.some(i=>i.x!==null&&ITEMS[i.type].kind==='weapon'))fail('请至少装备一件武器');if(s.phase==='camp')s.floor++;s.phase='battle';s.turn=1;s.enemy={hp:ENEMIES[s.floor].hp,block:0,intentIndex:0};startTurn(s);log(s,{type:'start',floor:s.floor});}
