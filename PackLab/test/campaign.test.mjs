@@ -4,7 +4,7 @@ import {createGame,ITEMS,effects,intent,startBattle,activate,endTurn,takeReward,
 test('twelve seeded eight-floor campaigns complete using legal purchases, placements and combat; saves restore each step',()=>{
  const priority={hammer:10,spark:12,bow:12,armor:11,stone:9,dagger:8,blade:8,spear:6,shield:7,herb:4,flask:4,pouch:2};
  for(let seed=0;seed<12;seed++){
-  let s=createGame(`RUN-${seed}`),ticks=0;
+  let s=createGame(`RUN-${seed}`,{version:1}),ticks=0;
   while(!['lost','won'].includes(s.phase)&&ticks++<400){
    if(['prepare','camp'].includes(s.phase)){
     if(s.phase==='camp'){
