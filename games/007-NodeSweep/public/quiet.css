@@ -1,6 +1,0 @@
-/* 简洁模式公共契约：浅色基准、等宽字体、禁用动画。
-   各游戏可以在自己的样式里覆盖具体配色，但建议沿用这里的变量。 */
-[data-view=quiet]{color-scheme:light;--q-bg:#f4f6f9;--q-panel:#fff;--q-raised:#f5f7fa;--q-line:#d8e0ea;--q-text:#1e2b3a;--q-muted:#63758a;--q-accent:#33608c;font-family:'Consolas','Cascadia Code','Microsoft YaHei',monospace}
-[data-view=quiet] body{background:var(--q-bg)}
-[data-view=quiet] *{animation:none!important;transition:none!important;text-shadow:none!important}
-[data-view=quiet] ::backdrop{background:#33465a44;backdrop-filter:none}

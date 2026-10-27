@@ -1,5 +1,5 @@
-// 简洁模式公共实现。改这里之后，把副本同步到各游戏 public/quiet.js。
-// 每个游戏仍然自带一份副本，保证单独拷贝目录即可运行。
+// 统一游戏库共享实现：NodeSweep、SignalRoute、OutageReset 直接引用。
+// CrateShift 有独立适配，保留自己的 quiet.js 和 quiet.css。
 export function setupQuiet({key,standardTitle,quietTitle,onApply}={}){
  const root=document.documentElement;
  let quiet=root.dataset.view==='quiet';

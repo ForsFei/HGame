@@ -22,6 +22,16 @@ test('canonical paths redirect and unknown or private files remain unavailable',
  assert.equal((await fetch(`${base}/api/library`,{headers:{Origin:'http://example.invalid'}})).status,403);
  const badHost=await new Promise((resolve,reject)=>{get(base,{headers:{Host:'example.invalid'}},response=>{response.resume();resolve(response.statusCode);}).on('error',reject);});assert.equal(badHost,403);
 }));
+test('three games load one shared quiet implementation while CrateShift retains its own adapter',()=>run(async base=>{
+ for(const file of ['quiet.js','quiet.css']){const response=await fetch(`${base}/shared/${file}`);assert.equal(response.status,200);assert.ok((await response.text()).length>0);}
+ for(const id of ['node-sweep','signal-route','outage-reset']){
+  const html=await (await fetch(`${base}/games/${id}/`)).text(),app=await (await fetch(`${base}/games/${id}/app.js`)).text();
+  assert.match(html,/href="\/shared\/quiet\.css"/);assert.match(app,/from '\/shared\/quiet\.js'/);
+  for(const file of ['quiet.js','quiet.css'])assert.equal((await fetch(`${base}/games/${id}/${file}`)).status,404);
+ }
+ assert.equal((await fetch(`${base}/games/crate-shift/quiet.js`)).status,200);assert.equal((await fetch(`${base}/games/crate-shift/quiet.css`)).status,200);
+ assert.equal((await fetch(`${base}/shared/../server.mjs`)).status,404);
+}));
 test('Yacht model calls use the same server without starting another listening service',()=>run(async base=>{
  const game=createGame([{name:'local',type:'model'}]);roll(game,()=>0.5);const body={config:{base:'https://model.invalid/v1',model:'test-model',key:'test-key'},game};
  const response=await fetch(`${base}/games/yacht-dice/api/decision`,{method:'POST',headers:{'Content-Type':'application/json',Origin:base},body:JSON.stringify(body)});assert.equal(response.status,200);const data=await response.json();assert.equal(data.action.type,'score');assert.ok(data.requestId);

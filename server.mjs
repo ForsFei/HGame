@@ -23,6 +23,7 @@ export function createLibraryServer({modelOptions={}}={}){
    let file;
    if(path==='/')file=resolve(root,'library/index.html');
    else if(/^\/library\/(app\.js|style\.css|catalog\.js|game-shell\.js)$/.test(path))file=resolve(root,path.slice(1));
+   else if(/^\/shared\/quiet\.(js|css)$/.test(path))file=resolve(root,path.slice(1));
    else{
     const match=/^\/games\/([a-z0-9-]+)(?:\/(.*))?$/.exec(path),game=match&&GAMES.find(g=>g.id===match[1]);
     if(!game)return send(404,'未找到页面，请返回游戏库 /');

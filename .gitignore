@@ -8,3 +8,6 @@ Thumbs.db
 
 .history/
 .playwright-cli/
+/library-preview.png
+/games/*/preview.png
+/games/*/*-preview.png

@@ -1,7 +1,6 @@
 # 快艇骰子 · HGame 001
 
-> **统一入口（已整理）**：从游戏库根目录双击 `启动游戏库.bat`，地址为 `http://127.0.0.1:43170/`；本游戏地址为 `http://127.0.0.1:43170/games/yacht-dice/`。本目录的 `启动游戏.bat` 和 `npm start` 也使用同一个游戏库服务。旧独立端口已停用，下面旧版记录中的端口仅供历史参考。无需单独启动此游戏。
-
+> 游戏入口：http://127.0.0.1:43170/games/yacht-dice/ · [统一启动说明](../../README.md)
 
 个人小游戏系列的第一作。原创航海牌桌界面，参考《世界游戏大全51》快艇骰子的玩法，不包含任天堂素材。无需安装依赖、登录或联网即可挑战内置人机。
 
@@ -45,7 +44,7 @@
 
 OpenAI 默认基础地址为 `https://api.openai.com/v1`，模型 ID 需自行填写；DeepSeek 预设为 `https://api.deepseek.com` 和 `deepseek-flash`，以服务商账号实际支持为准。自建本机服务可使用 `http://127.0.0.1:11434/v1` 等地址；若不要求密钥，可以填入非空占位值。
 
-按 [OpenAI Chat Completions 文档](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create)，官方 OpenAI 域名或 `gpt-` / `o数字` 模型使用 `max_completion_tokens`（上限 4096，含推理）；其他兼容服务使用 `max_tokens`（上限 2048）。[DeepSeek 官方文档](https://api-docs.deepseek.com/api/create-chat-completion/) 对应的官方接口关闭思考模式以减少回合等待。若自定义网关的参数协议不同，需要调整 `server.mjs` 的参数分支。
+按 [OpenAI Chat Completions 文档](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create)，官方 OpenAI 域名或 `gpt-` / `o数字` 模型使用 `max_completion_tokens`（上限 4096，含推理）；其他兼容服务使用 `max_tokens`（上限 2048）。[DeepSeek 官方文档](https://api-docs.deepseek.com/api/create-chat-completion/) 对应的官方接口关闭思考模式以减少回合等待。若自定义网关的参数协议不同，需要调整 `model-api.mjs` 的参数分支。
 
 Key 和模型配置仅在当前页面内存保存，不写入文件或 localStorage。刷新需重填。Key 经本机 Node 服务发送给所填接口；对局骰子、玩家名和计分表也会发给接口。不要填写不信任的服务地址。当前 Codex/ChatGPT 聊天不会自动接入游戏，聊天订阅也不包含 API 额度。模型决策会消耗自己的接口额度，最多每回合三次请求。
 
@@ -63,7 +62,7 @@ DeepSeek JSON 输出与空回复说明参考 [官方 JSON Output 文档](https:/
 
 浏览器 localStorage 自动保存一局进度、玩家名及主题。新建对局覆盖旧存档。隐私模式或禁用存储时可能无法恢复。界面支持深色、浅色及跟随系统；无外部字体、图片或运行时依赖。
 
-- `server.mjs`：本地静态服务、模型代理和同源访问检查。
+- `server.mjs`：模型代理处理器、同源访问检查和统一游戏库启动入口；静态文件由根目录服务提供。
 - `model-api.mjs`：模型提示、请求重试、返回解析和动作校验。
 - `model-trace.mjs`：本地 JSONL 日志、按日分文件及 Key 脱敏。
 - `public/engine.js`：计分规则、对局状态、内置策略、模型动作校验。

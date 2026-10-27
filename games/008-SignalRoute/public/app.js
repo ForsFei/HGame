@@ -1,4 +1,4 @@
-import {setupQuiet} from './quiet.js';
+import {setupQuiet} from '/shared/quiet.js';
 import {LEVELS,levelOf,createGame,turn,step,reach,openEnds,elapsedSeconds,validSave,recordResult,validRecord,summarize} from './engine.js';
 const $=id=>document.getElementById(id);
 const DIRS=['n','e','s','w'];
