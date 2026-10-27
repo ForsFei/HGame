@@ -41,6 +41,20 @@ export const ENEMIES=[
  {name:'深层守望',quiet:'watchdog-07',hp:72,intents:[['attack',13],['guard',12],['attack',16]]},
  {name:'高塔巨像',quiet:'root-08',hp:88,intents:[['attack',14],['guard',14],['attack',18]]}
 ];
+export const ROUTES={normal:{name:'常规战',quiet:'常规节点'},elite:{name:'精英战',quiet:'压力测试'},supply:{name:'补给点',quiet:'恢复节点'},boss:{name:'终点守卫',quiet:'根节点'}};
+export const routeFor=(s,floor=s.floor)=>s.version>=3?s.routeChoices[floor]||'normal':'normal';
+export function enemyStats(s){const base=ENEMIES[s.floor],elite=routeFor(s)==='elite';return {...base,hp:elite?Math.ceil(base.hp*1.25):base.hp,attackBonus:elite?2:0,guardBonus:elite?2:0};}
+export function routePreview(s,choice=s.nextRoute||'normal'){
+ const floor=s.phase==='camp'?s.floor+1:s.floor,route=s.version<3?'normal':['battle','won','lost'].includes(s.phase)?routeFor(s):floor===0?'normal':floor===7?'boss':choice;
+ if(!Object.hasOwn(ROUTES,route))throw Error('未知路线');
+ const target={...s,floor,routeChoices:s.version>=3?s.routeChoices.map((r,n)=>n===floor?route:r):undefined},enemy=enemyStats(target);
+ return {floor,route,hp:route==='supply'?0:enemy.hp,attackBonus:enemy.attackBonus,guardBonus:enemy.guardBonus,gold:route==='supply'?0:5+floor+(route==='elite'?4:0),heal:route==='supply'?8:4,trait:route==='supply'?null:enemyTrait(target)};
+}
+export function selectRoute(s,route){
+ editable(s);if(s.version<3)fail('此存档保留固定路线，请新建 v3 对局');
+ if(s.phase!=='camp'||s.floor>=6)fail('首层与终点路线固定');
+ if(!['normal','elite','supply'].includes(route))fail('未知路线');s.nextRoute=route;
+}
 const fail=message=>{throw Error(message);};
 const item=(s,uid)=>s.items.find(i=>i.uid===uid)||fail('找不到这件物品');
 const editable=s=>{if(!['prepare','camp'].includes(s.phase))fail('只能在整备阶段调整布局');};
@@ -68,17 +82,18 @@ function sample(keys,random,count){const a=[...keys];for(let i=a.length-1;i>0;i-
 const log=(s,event)=>{s.log=[event,...s.log].slice(0,30);};
 function recapRow(s){
  s.recap??=[];let row=s.recap.find(r=>r.floor===s.floor);
- if(!row){row={floor:s.floor,startHp:null,endHp:null,turns:s.turn,dealt:0,taken:0,healed:0,result:'running'};s.recap.push(row);}
+ if(!row){row={floor:s.floor,startHp:null,endHp:null,turns:s.turn,dealt:0,taken:0,healed:0,result:'running',...(s.version>=3?{route:routeFor(s)}:{})};s.recap.push(row);}
  return row;
 }
 function finishRecap(s,result){const row=recapRow(s);Object.assign(row,{endHp:s.hp,turns:s.turn,result});}
-export function validRecap(rows){return Array.isArray(rows)&&rows.length<=8&&new Set(rows.map(r=>r?.floor)).size===rows.length&&rows.every((r,n)=>r&&Number.isInteger(r.floor)&&r.floor>=0&&r.floor<8&&(n===0||rows[n-1].floor<r.floor)&&['running','won','lost'].includes(r.result)&&(r.startHp===null||Number.isInteger(r.startHp)&&r.startHp>=1&&r.startHp<=MAX_HP)&&(r.endHp===null||Number.isInteger(r.endHp)&&r.endHp>=0&&r.endHp<=MAX_HP)&&['turns','dealt','taken','healed'].every(k=>Number.isSafeInteger(r[k])&&r[k]>=0));}
+export function validRecap(rows){return Array.isArray(rows)&&rows.length<=8&&new Set(rows.map(r=>r?.floor)).size===rows.length&&rows.every((r,n)=>r&&Number.isInteger(r.floor)&&r.floor>=0&&r.floor<8&&(n===0||rows[n-1].floor<r.floor)&&['running','won','lost','supply'].includes(r.result)&&(r.route===undefined||Object.hasOwn(ROUTES,r.route))&&(r.startHp===null||Number.isInteger(r.startHp)&&r.startHp>=1&&r.startHp<=MAX_HP)&&(r.endHp===null||Number.isInteger(r.endHp)&&r.endHp>=0&&r.endHp<=MAX_HP)&&['turns','dealt','taken','healed'].every(k=>Number.isSafeInteger(r[k])&&r[k]>=0));}
 function add(s,type){const i={uid:`i${s.nextId++}`,type,x:null,y:null,rotation:0};s.items.push(i);return i;}
 export function createGame(seed=globalThis.crypto?.randomUUID?.().slice(0,8)||'PACKLAB',{version=2,build='balanced'}={}){
  seed=String(seed).trim().toUpperCase();if(!/^[A-Z0-9-]{1,24}$/.test(seed))fail('编号需为 1–24 位字母、数字或短横线');
- if(![1,2].includes(version)||!Object.hasOwn(BUILDS,build)||version===1&&build!=='balanced')fail('起始配置无效');
+ if(![1,2,3].includes(version)||!Object.hasOwn(BUILDS,build)||version===1&&build!=='balanced')fail('起始配置无效');
  const s={version,build,seed,phase:'prepare',floor:0,hp:MAX_HP,gold:6,items:[],nextId:1,turn:0,energy:0,block:0,used:[],enemy:null,rewards:[],offers:[],rewardTaken:false,rested:false,log:[],recap:[]};
  const loadouts={balanced:[['blade',0,0],['shield',3,0],['stone',1,1],['herb',4,3]],archer:[['bow',2,0],['shield',0,0],['quiver',3,1],['herb',4,3]],bulwark:[['blade',0,0],['tower',2,1],['bash',0,1],['herb',4,3]],alchemist:[['blade',0,0],['shield',3,0],['kit',1,1],['herb',1,2],['bomb',2,2],['flask',4,2]]};
+ if(version>=3){s.routeChoices=Array(8).fill(null);s.routeChoices[0]='normal';s.routeChoices[7]='boss';s.nextRoute='normal';}
  for(const [type,x,y]of loadouts[build])Object.assign(add(s,type),{x,y});return s;
 }
 export function place(s,uid,x,y){editable(s);const i=item(s,uid);if(!Number.isInteger(x)||!Number.isInteger(y)||!fits(s,i,x,y))fail('位置越界或已被占用');Object.assign(i,{x,y});}
@@ -121,10 +136,18 @@ function restoreLayout(s,h,direction){
 }
 export const undoLayout=(s,h)=>restoreLayout(s,h,'undo');
 export const redoLayout=(s,h)=>restoreLayout(s,h,'redo');
-export function intent(s){const [type,value]=ENEMIES[s.floor].intents[s.enemy?.intentIndex||0],trait=enemyTrait(s);return [type,value+(type==='guard'&&trait?.id==='fortress'?6:0)+(type==='attack'&&trait?.id==='rage'?Math.min(6,Math.floor(Math.max(0,s.turn-1)/3)*2):0)];}
+export function intent(s){const [type,value]=ENEMIES[s.floor].intents[s.enemy?.intentIndex||0],trait=enemyTrait(s);return [type,value+(type==='guard'&&trait?.id==='fortress'?6:0)+(type==='attack'?enemyStats(s).attackBonus:enemyStats(s).guardBonus)+(type==='attack'&&trait?.id==='rage'?Math.min(6,Math.floor(Math.max(0,s.turn-1)/3)*2):0)];}
 function startTurn(s){s.energy=3;s.block=s.items.filter(i=>i.x!==null&&i.type==='armor').length*4;s.used=[];}
-export function startBattle(s){if(!['prepare','camp'].includes(s.phase))fail('当前不能进入战斗');if(s.phase==='camp'&&!s.rewardTaken)fail('请先选择或跳过奖励');if(!s.items.some(i=>i.x!==null&&ITEMS[i.type].kind==='weapon'))fail('请至少装备一件武器');if(s.phase==='camp')s.floor++;s.phase='battle';s.turn=1;s.enemy={hp:ENEMIES[s.floor].hp,block:enemyTrait(s)?.id==='fortress'?8:0,intentIndex:0};startTurn(s);Object.assign(recapRow(s),{startHp:s.hp});log(s,{type:'start',floor:s.floor});}
-function victory(s){finishRecap(s,'won');s.gold+=5+s.floor+s.items.filter(i=>i.x!==null&&i.type==='pouch').length*3;s.hp=Math.min(MAX_HP,s.hp+4);log(s,{type:'win',floor:s.floor});if(s.floor===7){s.phase='won';return;}s.phase='camp';s.rewardTaken=false;s.rested=false;s.shopRefreshes=0;const random=rng(`${s.seed}/camp/${s.floor}${s.version>=2?'/v2':''}`),pool=s.version>=2?Object.keys(ITEMS):LEGACY_ITEMS;if(s.version>=2){const supply=sample(['herb','flask','bomb'],random,1)[0];s.rewards=[supply,...sample(pool.filter(t=>t!==supply),random,2)];}else s.rewards=sample(pool,random,3);s.offers=sample(pool,random,3).map(type=>({type,bought:false}));}
+export function startBattle(s){
+ if(!['prepare','camp'].includes(s.phase))fail('当前不能进入战斗');if(s.phase==='camp'&&!s.rewardTaken)fail('请先选择或跳过奖励');if(!s.items.some(i=>i.x!==null&&ITEMS[i.type].kind==='weapon'))fail('请至少装备一件武器');
+ const next=routePreview(s);if(s.phase==='camp')s.floor++;if(s.version>=3){s.routeChoices[s.floor]=next.route;s.nextRoute='normal';}
+ if(next.route==='supply'){
+  s.turn=0;s.energy=0;s.block=0;s.used=[];s.enemy={hp:0,block:0,intentIndex:0};const row=recapRow(s);row.startHp=s.hp;s.hp=Math.min(MAX_HP,s.hp+8);finishRecap(s,'supply');log(s,{type:'supply',floor:s.floor,heal:s.hp-row.startHp});openCamp(s);return;
+ }
+ s.phase='battle';s.turn=1;s.enemy={hp:enemyStats(s).hp,block:enemyTrait(s)?.id==='fortress'?8:0,intentIndex:0};startTurn(s);Object.assign(recapRow(s),{startHp:s.hp});log(s,{type:'start',floor:s.floor});
+}
+function victory(s){finishRecap(s,'won');s.gold+=5+s.floor+(routeFor(s)==='elite'?4:0)+s.items.filter(i=>i.x!==null&&i.type==='pouch').length*3;s.hp=Math.min(MAX_HP,s.hp+4);log(s,{type:'win',floor:s.floor});if(s.floor===7){s.phase='won';return;}openCamp(s);}
+function openCamp(s){s.phase='camp';s.rewardTaken=false;s.rested=false;s.shopRefreshes=0;const random=rng(`${s.seed}/camp/${s.floor}${s.version>=2?'/v2':''}`),pool=s.version>=2?Object.keys(ITEMS):LEGACY_ITEMS;if(s.version>=2){const supply=sample(['herb','flask','bomb'],random,1)[0];s.rewards=[supply,...sample(pool.filter(t=>t!==supply),random,2)];}else s.rewards=sample(pool,random,3);s.offers=sample(pool,random,3).map(type=>({type,bought:false}));if(routeFor(s)==='supply')s.rewards=['herb','flask','bomb'];}
 export function combatPreview(s,uid){
  if(s.phase!=='battle')fail('当前不在战斗阶段');const i=item(s,uid),def=ITEMS[i.type],e=effects(s,i);
  const damage=Math.min(s.enemy.hp,Math.max(0,e.damage-(def.pierce?0:s.enemy.block))),enemyBlock=def.pierce?s.enemy.block:Math.max(0,s.enemy.block-e.damage);
@@ -162,7 +185,10 @@ export function rest(s){if(s.phase!=='camp'||s.rested||s.hp===MAX_HP||s.gold<4)f
 export function validSave(s){
  if(s?.shopRefreshes!==undefined&&(![0,1].includes(s.shopRefreshes)||s.version===1&&s.shopRefreshes!==0||s.phase==='prepare'&&s.shopRefreshes!==0))return false;
  if(s?.recap!==undefined&&!validRecap(s.recap)||s?.runId!==undefined&&(typeof s.runId!=='string'||!/^[A-Za-z0-9-]{1,80}$/.test(s.runId)))return false;
- if(!s||![1,2].includes(s.version)||!['prepare','battle','camp','won','lost'].includes(s.phase)||!Number.isInteger(s.floor)||s.floor<0||s.floor>7||typeof s.seed!=='string'||!/^[A-Z0-9-]{1,24}$/.test(s.seed))return false;
+ if(!s||![1,2,3].includes(s.version)||!['prepare','battle','camp','won','lost'].includes(s.phase)||!Number.isInteger(s.floor)||s.floor<0||s.floor>7||typeof s.seed!=='string'||!/^[A-Z0-9-]{1,24}$/.test(s.seed))return false;
+ if(s.version>=3&&(!Array.isArray(s.routeChoices)||s.routeChoices.length!==8||s.routeChoices[0]!=='normal'||s.routeChoices[7]!=='boss'||!s.routeChoices.every((r,n)=>n===0?r==='normal':n===7?r==='boss':r===null||['normal','elite','supply'].includes(r))||!['normal','elite','supply'].includes(s.nextRoute)))return false;
+ if(s.version>=3&&(s.routeChoices.some((r,n)=>n>0&&n<7&&(n<=s.floor?r===null:r!==null))||s.phase==='prepare'&&s.nextRoute!=='normal'||['battle','lost','won'].includes(s.phase)&&routeFor(s)==='supply'))return false;
+ if(s.version<3&&(s.routeChoices!==undefined||s.nextRoute!==undefined))return false;
  if(s.version>=2&&!Object.hasOwn(BUILDS,s.build)||s.version===1&&s.build!==undefined&&s.build!=='balanced')return false;
  if(s.version===1&&Array.isArray(s.items)&&s.items.some(i=>i&&!LEGACY_ITEMS.includes(i.type)))return false;
  if(!['hp','gold','turn','energy','block','nextId'].every(k=>Number.isSafeInteger(s[k])&&s[k]>=0)||s.hp>MAX_HP||s.energy>7||s.nextId<1)return false;
@@ -171,8 +197,8 @@ export function validSave(s){
  if(!s.items.every(i=>Number.isInteger(itemLevel(i))&&itemLevel(i)>=0&&itemLevel(i)<=2&&(itemLevel(i)===0||s.version>=2&&['weapon','guard'].includes(ITEMS[i.type].kind))))return false;
  if(!Array.isArray(s.used)||s.used.length>MAX_ITEMS||new Set(s.used).size!==s.used.length||!s.used.every(id=>typeof id==='string'&&/^i[1-9]\d*$/.test(id)&&Number(id.slice(1))<s.nextId)||typeof s.rewardTaken!=='boolean'||typeof s.rested!=='boolean')return false;
  if(!Array.isArray(s.rewards)||s.rewards.length>3||!s.rewards.every(t=>Object.hasOwn(ITEMS,t))||!Array.isArray(s.offers)||s.offers.length>3||!s.offers.every(o=>o&&Object.hasOwn(ITEMS,o.type)&&typeof o.bought==='boolean'))return false;
- if(!Array.isArray(s.log)||s.log.length>30||!s.log.every(e=>e&&['start','win','use','hit','guard','loot','skip','buy','sell','rest','reflect','forge','refresh'].includes(e.type)&&(e.item===undefined||Object.hasOwn(ITEMS,e.item))&&(e.type!=='refresh'||s.version>=2&&e.cost===SHOP_REFRESH_COST)&&(e.type!=='forge'||s.version>=2&&Number.isInteger(e.level)&&e.level>=1&&e.level<=2&&e.cost===FORGE_COSTS[e.level-1]&&Object.hasOwn(ITEMS,e.item))))return false;
- if(['battle','lost','won','camp'].includes(s.phase)&&(!s.enemy||!Number.isInteger(s.enemy.hp)||s.enemy.hp<0||s.enemy.hp>ENEMIES[s.floor].hp||!Number.isSafeInteger(s.enemy.block)||s.enemy.block<0||!Number.isInteger(s.enemy.intentIndex)||s.enemy.intentIndex<0||s.enemy.intentIndex>=ENEMIES[s.floor].intents.length))return false;
+ if(!Array.isArray(s.log)||s.log.length>30||!s.log.every(e=>e&&['start','win','use','hit','guard','loot','skip','buy','sell','rest','reflect','forge','refresh','supply'].includes(e.type)&&(e.item===undefined||Object.hasOwn(ITEMS,e.item))&&(e.type!=='supply'||s.version>=3&&Number.isInteger(e.floor)&&e.floor>=1&&e.floor<=6&&Number.isInteger(e.heal)&&e.heal>=0&&e.heal<=8)&&(e.type!=='refresh'||s.version>=2&&e.cost===SHOP_REFRESH_COST)&&(e.type!=='forge'||s.version>=2&&Number.isInteger(e.level)&&e.level>=1&&e.level<=2&&e.cost===FORGE_COSTS[e.level-1]&&Object.hasOwn(ITEMS,e.item))))return false;
+ if(['battle','lost','won','camp'].includes(s.phase)&&(!s.enemy||!Number.isInteger(s.enemy.hp)||s.enemy.hp<0||s.enemy.hp>enemyStats(s).hp||!Number.isSafeInteger(s.enemy.block)||s.enemy.block<0||!Number.isInteger(s.enemy.intentIndex)||s.enemy.intentIndex<0||s.enemy.intentIndex>=ENEMIES[s.floor].intents.length))return false;
  if(s.phase==='prepare'&&(s.floor!==0||s.enemy!==null)||s.phase==='camp'&&(s.floor>=7||s.rewards.length!==3||s.offers.length!==3||s.enemy.hp!==0)||s.phase!=='lost'&&s.hp===0)return false;
  if(s.phase==='lost'&&s.hp!==0||s.phase==='won'&&(s.floor!==7||s.enemy.hp!==0)||s.phase==='battle'&&(s.hp===0||s.enemy.hp===0))return false;return true;
 }

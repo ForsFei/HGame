@@ -24,3 +24,5 @@
 .mobile-run-label,#runSelect{display:none}@media(max-width:690px){.mobile-run-label{display:block}#runSelect{display:block;width:100%;background:var(--bg);color:var(--text);font:inherit;border:1px solid var(--line);padding:10px;margin:8px 0 16px}.run-list{display:none}}
 
 .shop-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}.shop-actions button{font-size:10px;padding:7px 8px}.shop-heading{align-items:flex-start}.shop-heading h2{flex-shrink:0}#refreshHint{margin-top:-4px;padding:10px 12px;border:1px solid var(--line);border-radius:4px;background:var(--bg)}
+
+.route-panel{text-align:left;margin:16px 0;border-top:1px solid var(--line);padding-top:14px}.route-panel h3{font-size:12px;margin:0}.route-panel .hint{margin:8px 0}.route-options{display:flex;flex-direction:column;gap:7px}.route-choice{text-align:left;padding:10px 12px}.route-choice b{display:block;font-size:11px;font-weight:550}.route-choice span{display:block;font-size:10px;line-height:1.8;color:var(--muted);margin-top:5px}.route-choice.selected{border-color:var(--cyan);box-shadow:inset 3px 0 var(--cyan)}.route-choice:disabled{opacity:.85}
