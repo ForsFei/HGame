@@ -6,8 +6,8 @@ import {createLibraryServer} from '../server.mjs';
 import {GAMES} from '../library/catalog.js';
 import {createGame,roll} from '../games/001-YachtDice/public/engine.js';
 async function run(fn,options){const server=createLibraryServer(options);await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const base=`http://127.0.0.1:${server.address().port}`;try{await fn(base);}finally{await new Promise(resolve=>server.close(resolve));}}
-test('one server serves the library and all ten isolated game asset trees',()=>run(async base=>{
- const info=await (await fetch(`${base}/api/library`)).json();assert.equal(info.app,'hgame-library');assert.equal(info.games.length,10);assert.equal(new Set(info.games.map(g=>g.url)).size,10);
+test('one server serves the library and all isolated game asset trees',()=>run(async base=>{
+ const info=await (await fetch(`${base}/api/library`)).json();assert.equal(info.app,'hgame-library');assert.equal(info.games.length,GAMES.length);assert.equal(new Set(info.games.map(g=>g.url)).size,GAMES.length);
  assert.match(await (await fetch(base)).text(),/id="games"/);
  for(const game of GAMES){
   const url=`${base}/games/${game.id}/`,response=await fetch(url);assert.equal(response.status,200,game.id);const html=await response.text();assert.match(html,/\/library\/game-shell.js/);assert.ok(!/(?:src|href)="\/(?:app\.js|style\.css|engine\.js)/.test(html),game.id);
@@ -39,6 +39,6 @@ test('Yacht model calls use the same server without starting another listening s
  const bad=await fetch(`${base}/api/decision`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});assert.equal(bad.status,400);
 },{modelOptions:{trace:async()=>{},fetchImpl:async()=>Response.json({choices:[{message:{content:'{"type":"score","category":"choice"}'},finish_reason:'stop'}]}),retryDelayMs:0}}));
 test('every former launcher targets the shared service and each folder has a stable sequence',async()=>{
- assert.deepEqual(GAMES.map(g=>g.number),Array.from({length:10},(_,n)=>String(n+1).padStart(3,'0')));
+ assert.deepEqual(GAMES.map(g=>g.number),Array.from({length:GAMES.length},(_,n)=>String(n+1).padStart(3,'0')));
  for(const game of GAMES){const launcher=await readFile(new URL(`../games/${game.folder}/启动游戏.bat`,import.meta.url),'utf8');assert.match(launcher,/start-library\.ps1/);assert.match(launcher,new RegExp(game.id));const server=await readFile(new URL(`../games/${game.folder}/server.mjs`,import.meta.url),'utf8');assert.match(server,/startLibrary/);assert.ok(!/\.listen\(/.test(server),game.id);}
 });

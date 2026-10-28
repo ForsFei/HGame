@@ -4,12 +4,14 @@ import {fileURLToPath} from 'node:url';
 import {resolve,extname} from 'node:path';
 import {GAMES,gameUrl} from './library/catalog.js';
 import {makeServer} from './games/001-YachtDice/server.mjs';
+import {createRocoApi} from './games/011-RocoLab/api.mjs';
 
 const root=fileURLToPath(new URL('./',import.meta.url)),common=['index.html','app.js','engine.js','style.css'];
 const types={'.html':'text/html','.js':'text/javascript','.css':'text/css'};
-export function createLibraryServer({modelOptions={}}={}){
+export function createLibraryServer({modelOptions={},rocoOptions={}}={}){
  const yacht=makeServer(modelOptions);
- return http.createServer(async(req,res)=>{
+ const roco=createRocoApi(rocoOptions);
+ const server=http.createServer(async(req,res)=>{
   const send=(status,data,type='text/plain')=>{res.writeHead(status,{'Content-Type':`${type}; charset=utf-8`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'same-origin'});res.end(req.method==='HEAD'?undefined:data);};
   try{
    if(!/^(127\.0\.0\.1|localhost):\d+$/.test(req.headers.host||''))return send(403,'仅允许本机访问');
@@ -18,6 +20,8 @@ export function createLibraryServer({modelOptions={}}={}){
    const url=new URL(req.url,expected),path=url.pathname;
    if(req.headers.host.startsWith('localhost:')&&['GET','HEAD'].includes(req.method)){res.writeHead(308,{Location:`http://127.0.0.1:${url.port}${path}${url.search}`});res.end();return;}
    if(path==='/api/decision'||path==='/games/yacht-dice/api/decision'){req.url='/api/decision';yacht.emit('request',req,res);return;}
+   const rocoRoute=/^\/games\/roco-lab\/api\/([a-z]+)$/.exec(path);
+   if(rocoRoute)return roco.handle(req,res,rocoRoute[1]);
    if(!['GET','HEAD'].includes(req.method))return send(405,'不支持的请求');
    if(path==='/api/library')return send(200,JSON.stringify({app:'hgame-library',version:1,port:Number(url.port),games:GAMES.map(({files,...g})=>({...g,url:gameUrl(g.id)}))}),'application/json');
    let file;
@@ -36,6 +40,8 @@ export function createLibraryServer({modelOptions={}}={}){
    send(200,data,types[extname(file)]||'text/plain');
   }catch(e){send(e.code==='ENOENT'?404:500,e.code==='ENOENT'?'未找到文件':'服务读取失败，请检查本地文件');}
  });
+ server.on('close',()=>roco.close());
+ return server;
 }
 export function startLibrary({game,port}={}){
  const args=process.argv.slice(2),option=name=>{const n=args.indexOf(name);return n<0?undefined:args[n+1];};
@@ -44,7 +50,7 @@ export function startLibrary({game,port}={}){
  if(game&&!GAMES.some(g=>g.id===game))throw Error('游戏编号无效');
  const server=createLibraryServer();
  server.on('error',e=>{console.error(e.code==='EADDRINUSE'?`端口 ${port} 已占用。已有游戏库可直接打开；否则请关闭旧服务或设置 PORT。`:e.message);process.exitCode=1;});
- server.listen(port,'127.0.0.1',()=>console.log(`HGame Library: http://127.0.0.1:${port}${game?gameUrl(game):'/'}\n十个游戏共用一个服务。关闭此窗口停止游戏库。`));
+ server.listen(port,'127.0.0.1',()=>console.log(`HGame Library: http://127.0.0.1:${port}${game?gameUrl(game):'/'}\n${GAMES.length} 个游戏共用一个服务。关闭此窗口停止游戏库。`));
  return server;
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url))startLibrary();

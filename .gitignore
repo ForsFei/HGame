@@ -11,3 +11,8 @@ Thumbs.db
 /library-preview.png
 /games/*/preview.png
 /games/*/*-preview.png
+__pycache__/
+*.pyc
+/games/011-RocoLab/logs/
+*.db-shm
+*.db-wal

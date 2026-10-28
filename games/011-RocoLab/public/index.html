@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN" data-view="quiet">
+<head>
+ <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+ <meta name="description" content="本地回合模拟与伤害推导工作台"><title>RocoLab · 对局调试台</title>
+ <link rel="stylesheet" href="./style.css"><script type="module" src="./app.js"></script>
+</head>
+<body>
+ <header><a class="brand" href="./"><span class="brand-mark">rl</span><span>RocoLab <small>对局调试台</small></span></a><nav><span class="local-dot">LOCAL</span><button id="modelSettings">模型设置</button></nav></header>
+ <div class="workspace">
+  <aside class="sidebar"><div class="workspace-name">WORKSPACE <span>011</span></div><div class="tree-label">⌄ roco-lab /</div>
+   <nav aria-label="工作区页面"><button data-tab="battle" class="active"><span>⌘</span> 执行控制 <kbd>01</kbd></button><button data-tab="teams"><span>≡</span> 样本配置 <kbd>02</kbd></button><button data-tab="calc"><span>ƒ</span> 伤害推导 <kbd>03</kbd></button><button data-tab="docs"><span>?</span> 规则与来源 <kbd>04</kbd></button></nav>
+   <div class="sidebar-note"><span class="status-dot"></span> 简洁模式 · 无插图<p>community engine<br>offline workspace</p></div>
+  </aside>
+  <main>
+   <div id="notice" class="notice" role="status" aria-live="polite">正在载入本地规则数据…</div>
+   <section id="battle" class="page active" aria-labelledby="battleTitle">
+    <div class="page-heading"><div><div class="eyebrow">SIMULATION / CONTROL</div><h1 id="battleTitle">执行控制</h1><p>配置两组样本，逐回合观察指令与状态变化。</p></div><span class="version">v0.1 / community snapshot</span></div>
+    <div class="toolbar"><label>运行方式<select id="mode"><option value="preset">单机 · 预设人机</option><option value="local">本地双人 · 同屏轮流提交</option><option value="model">单机 · 模型 API</option></select></label><label>预设策略<select id="difficulty"><option value="easy">随机练习</option><option value="standard" selected>标准 · 回合期望</option><option value="tactical">战术 · 风险评估</option></select></label><button id="createBattle" class="primary" disabled>新建对局</button><button id="syncBattle" disabled>同步状态</button></div>
+    <div id="battleArea"><div class="empty-state"><div class="terminal-glyph">&gt;_</div><h2>规则数据准备中</h2><p>首次加载后即可创建本地对局。</p></div></div>
+   </section>
+   <section id="teams" class="page" aria-labelledby="teamsTitle">
+    <div class="page-heading"><div><div class="eyebrow">SAMPLES / CONFIGURATION</div><h1 id="teamsTitle">样本配置</h1><p>双方各 1–6 只，首位默认登场；配置修改用于下一场对局。</p></div><div class="inline"><button id="exportTeams">导出配置</button><button id="importTeams">导入配置</button><input id="importFile" type="file" accept="application/json,.json" hidden></div></div>
+    <div id="teamEditor"></div>
+   </section>
+   <section id="calc" class="page" aria-labelledby="calcTitle">
+    <div class="page-heading"><div><div class="eyebrow">NUMERICS / DAMAGE</div><h1 id="calcTitle">伤害推导</h1><p>分解基础公式，同时对照效果引擎的一回合净变化。</p></div><button id="calcFromBattle">读取当前登场样本</button></div>
+    <div id="calculator"></div>
+   </section>
+   <section id="docs" class="page" aria-labelledby="docsTitle">
+    <div class="page-heading"><div><div class="eyebrow">REFERENCE / RULES</div><h1 id="docsTitle">规则与来源</h1><p>本地社区规则模拟 · 洛克王国：世界</p></div></div>
+    <div id="dataSummary" class="data-summary"></div>
+    <div class="docs-grid"><article class="panel prose"><h2>如何运行</h2><p>在“样本配置”中选择精灵、技能、性格与个体值，再回到执行控制新建对局。双方队伍数量必须一致，同队不允许重复精灵。</p><p>双方同时选招，按上游的应对、优先级与速度规则结算。能量初始 10；每只精灵倒下通常扣除 1 点 MP。任一方 MP 为 0 或全队倒下即结束，超过 200 回合记为平局。</p><p>首版的倒下接替与技能强制换人按引擎自动处理。你也可以主动选择后备精灵，主动切换占用本回合。队列顺序可在配置中调整。</p><h2>三种控制方式</h2><p><b>预设人机：</b>随机练习随机选合法动作；标准策略模拟双方合法动作组合，比较回合后的生命、能量与 MP；战术策略额外提高最坏结果的权重。两者均不读取你当前提交的指令。</p><p><b>本地双人：</b>A 提交后遮住操作区，交接给 B；B 提交后统一结算。已提交动作在结算前不显示。适合同一台电脑轮流操作。</p><p><b>模型 API：</b>你控制 A，模型控制 B。提供公开队伍、技能说明、当前状态、最近 8 回合及合法动作。密钥只保留在当前页面内存；刷新需重新填写。接口失败不推进回合，可重试或本次交给预设人机。</p></article>
+    <article class="panel prose"><h2>计算范围与数据版本</h2><p>基础直伤共用引擎的 DamageCalculator：攻击 ÷ 防御 × 能力修正 × 威力 × 0.9 × 克制 × 本系 × 天气 × 连击，向下取整。零威力技能基础直伤为 0。</p><p>基础直伤不包含条件威力、特性触发、印记、应对与防御减伤。下方的回合对照会运行效果引擎；它显示双方一回合后的 HP 净变化，可能包含回复、持续伤害或蓄力，不能当作一次命中的伤害。</p><p>采用 <a href="https://github.com/ColinHong10/NRC_AI" target="_blank" rel="noreferrer">ColinHong10/NRC_AI</a>（MIT）2026-04-20 的代码与 SQLite 数据快照，保留原授权。上游仍有未实现特性，自动生成的技能配置也未逐一核验；“已有配置”不代表通过实机校准。当前不保证与最新赛季完全一致。</p><p>另参考 <a href="https://github.com/leolion03/roco-kingdom-pet" target="_blank" rel="noreferrer">roco-kingdom-pet</a> 的工具划分及 <a href="https://github.com/eTATr/raco-helper" target="_blank" rel="noreferrer">raco-helper</a> 的伤害分析思路，未复制它们的代码或插图。</p><h2>调试记录</h2><p>模型输入、输出、重试和最终动作自动记录在项目的 logs/model-api-日期.jsonl，API Key 会脱敏。执行控制可查看并导出本页最近一次成功调用记录。回合记录也可导出 JSON。</p><p>对局在本地服务内存中保存，服务重启或闲置超过 3 小时后会失效；样本配置保留在浏览器中。完整版美术与演出在简洁版稳定后再制作。</p></article></div>
+   </section>
+   <footer><span id="footerStatus">engine loading</span><span>127.0.0.1 / local sandbox</span></footer>
+  </main>
+ </div>
+ <datalist id="petNames"></datalist>
+ <dialog id="settingsDialog"><form id="settingsForm"><div class="dialog-heading"><div><div class="eyebrow">MODEL / ENDPOINT</div><h2>模型设置</h2></div><button type="button" data-close="settingsDialog" aria-label="关闭模型设置">×</button></div><p>支持 Chat Completions 兼容接口。你控制 A，模型控制 B。</p><label>服务商<select id="provider"><option value="deepseek">DeepSeek 官方</option><option value="openai">OpenAI</option><option value="custom">其他 / 本地兼容接口</option></select></label><label>接口基础地址<input id="modelBase" type="url" required placeholder="https://api.deepseek.com"></label><label>模型名称<input id="modelName" required placeholder="填写服务商提供的模型 ID"></label><label>API Key<input id="modelKey" type="password" autocomplete="off" required placeholder="仅保留在当前页面内存"></label><p class="muted">密钥不写入配置文件、浏览器存储或日志。每回合最多请求 2 次，日志保存在本机项目目录。</p><div class="inline"><button class="primary" type="submit">应用设置</button><button type="button" id="clearModel">清除设置与密钥</button></div></form></dialog>
+ <dialog id="handoffDialog"><div class="terminal-glyph">⇥</div><h2>切换控制侧</h2><p id="handoffText"></p><button id="acceptHandoff" class="primary">已交接，显示操作区</button></dialog>
+ <dialog id="traceDialog"><div class="dialog-heading"><h2>最近模型调用</h2><button data-close="traceDialog" aria-label="关闭调用记录">×</button></div><p>系统提示词、局面输入与模型原始输出；密钥已脱敏。</p><pre id="traceContent"></pre><button id="exportTrace">导出调用记录</button></dialog>
+</body></html>

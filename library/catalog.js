@@ -8,6 +8,7 @@ export const GAMES=[
  {number:'007',id:'node-sweep',folder:'007-NodeSweep',name:'异常点排查',english:'NodeSweep',quiet:'节点巡检',category:'逻辑解谜',symbol:'⌖',color:'#c0d69c',description:'利用周围的数字排除风险，标记异常，清理整片区域。',quietDescription:'巡检节点，依据相邻读数定位异常。',tags:['单人','扫雷','每日挑战'],files:[]},
  {number:'008',id:'signal-route',folder:'008-SignalRoute',name:'信号路由',english:'SignalRoute',quiet:'链路巡检',category:'逻辑解谜',symbol:'⌘',color:'#a8bce3',description:'旋转打散的线路，让所有节点重新连接网关。',quietDescription:'调整链路方向，恢复完整的连通网络。',tags:['单人','接线','可解关卡'],files:[]},
  {number:'009',id:'outage-reset',folder:'009-OutageReset',name:'告警复位',english:'OutageReset',quiet:'告警清零',category:'逻辑解谜',symbol:'⊞',color:'#e1b8a7',description:'一次翻转影响十字邻居，用尽量少的步数熄灭所有灯。',quietDescription:'按十字影响关系复位全部告警节点。',tags:['单人','熄灯','最少步数'],files:[]},
- {number:'010',id:'crate-shift',folder:'010-CrateShift',name:'托盘上架',english:'CrateShift',quiet:'库位归位',category:'逻辑解谜',symbol:'▣',color:'#d4bb97',description:'箱子只能推、不能拉。规划路径，把托盘送进指定库位。',quietDescription:'规划搬运路径，将所有模块归入目标地址。',tags:['单人','推箱子','关卡挑战'],files:['quiet.js','quiet.css']}
+ {number:'010',id:'crate-shift',folder:'010-CrateShift',name:'托盘上架',english:'CrateShift',quiet:'库位归位',category:'逻辑解谜',symbol:'▣',color:'#d4bb97',description:'箱子只能推、不能拉。规划路径，把托盘送进指定库位。',quietDescription:'规划搬运路径，将所有模块归入目标地址。',tags:['单人','推箱子','关卡挑战'],files:['quiet.js','quiet.css']},
+ {number:'011',id:'roco-lab',folder:'011-RocoLab',name:'洛克对战实验室',english:'RocoLab',quiet:'对局调试台',category:'策略构筑',symbol:'⌬',color:'#9abdcf',description:'洛克王国：世界社区规则模拟，配队、对战与伤害推导。当前提供无插图简洁版。',quietDescription:'配置样本，运行回合模拟与数值推导。',tags:['预设人机','本地双人','模型 API'],files:[]}
 ];
 export const gameUrl=(id,quiet=false)=>`/games/${id}/${quiet?'?libraryView=quiet':''}`;
