@@ -1,13 +1,14 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {PUZZLES} from '../public/puzzles.js';
-import {EMPTY,FILLED,MARKED,cluesOf,lineCandidates,puzzleClues,countSolutions,isUnique,validPuzzle,createGame,setMark,cycle,isSolved,mistakes,filledCount,rowDone,colDone,validSave,dayKey,pickDaily,pickPractice,recordResult,validRecord,summarize} from '../public/engine.js';
+import {EMPTY,FILLED,MARKED,MISTAKE_LIMIT,cluesOf,lineCandidates,puzzleClues,countSolutions,isUnique,validPuzzle,createGame,claim,autofill,isSolved,filledCount,settledCount,mistakesLeft,rowDone,colDone,validSave,dayKey,pickDaily,pickPractice,recordResult,validRecord,summarize} from '../public/engine.js';
 
+const DIAGONAL={id:'TEST-DIAGONAL',size:5,name:'对角线',solution:['10000','01000','00100','00010','00001']};
 const solve=(state)=>{
- for(let i=0;i<state.marks.length;i++)if(state.solution[Math.floor(i/state.size)][i%state.size]==='1')setMark(state,i,FILLED);
+ for(let i=0;i<state.marks.length&&state.status==='playing';i++)if(state.solution[Math.floor(i/state.size)][i%state.size]==='1')claim(state,i,FILLED);
  return state;
 };
-const wrongIndex=(puzzle)=>Array.from({length:puzzle.size*puzzle.size},(_,i)=>i).find(i=>puzzle.solution[Math.floor(i/puzzle.size)][i%puzzle.size]==='0');
+const zeros=(puzzle,count)=>Array.from({length:puzzle.size*puzzle.size},(_,i)=>i).filter(i=>puzzle.solution[Math.floor(i/puzzle.size)][i%puzzle.size]==='0').slice(0,count);
 
 test('clues describe runs of filled cells',()=>{
  assert.deepEqual(cluesOf([0,0,0]),[]);
@@ -56,66 +57,156 @@ test('every shipped puzzle is valid and uniquely solvable',()=>{
  for(const size of [5,10,15])assert.ok(PUZZLES.filter(puzzle=>puzzle.size===size).length>=5,`size ${size}`);
 });
 
-test('marking cycles through empty, filled and marked',()=>{
- const puzzle=PUZZLES.find(item=>item.size===5);
- const state=createGame(puzzle);
- assert.equal(state.marks.length,25);
+test('a correct claim settles the cell at once and locks it',()=>{
+ const state=createGame(DIAGONAL);
+ assert.equal(state.mistakes,0);
  assert.equal(state.status,'playing');
- cycle(state,0);assert.equal(state.marks[0],FILLED);
- cycle(state,0);assert.equal(state.marks[0],MARKED);
- cycle(state,0);assert.equal(state.marks[0],EMPTY);
- assert.throws(()=>setMark(state,0,9));
- assert.throws(()=>setMark(state,99,FILLED));
+ const result=claim(state,0,FILLED);
+ assert.equal(result.ok,true);
+ assert.equal(result.wrong,false);
+ assert.equal(result.correct,FILLED);
+ assert.equal(state.marks[0],FILLED);
+ assert.equal(state.mistakes,0);
+ assert.equal(state.status,'playing');
+ const again=claim(state,0,FILLED);
+ assert.equal(again.ok,false);
+ assert.equal(again.settled,true);
+ assert.equal(state.marks[0],FILLED);
+ assert.equal(state.mistakes,0);
+ const zeroResult=claim(state,7,MARKED);
+ assert.equal(zeroResult.wrong,false);
+ assert.equal(state.marks[7],MARKED);
+ assert.throws(()=>claim(state,9,3));
+ assert.throws(()=>claim(state,99,FILLED));
 });
 
-test('finishing only needs correct filled cells, marks are optional',()=>{
- const puzzle=PUZZLES.find(item=>item.size===5);
+test('a wrong claim reveals the real value and spends one chance',()=>{
+ const puzzle={...DIAGONAL};
  const state=createGame(puzzle);
- const blank=wrongIndex(puzzle);
- setMark(state,blank,MARKED);
- assert.equal(filledCount(state),0);
- solve(state);
+ const blank=4;
+ const wrong=claim(state,blank,FILLED);
+ assert.equal(wrong.ok,true);
+ assert.equal(wrong.wrong,true);
+ assert.equal(wrong.correct,MARKED);
+ assert.equal(state.marks[blank],MARKED);
+ assert.equal(state.mistakes,1);
+ assert.deepEqual(state.wrong,[blank]);
+ assert.equal(mistakesLeft(state),MISTAKE_LIMIT-1);
+ const one=0;
+ const wrongAgain=claim(state,one,MARKED);
+ assert.equal(wrongAgain.wrong,true);
+ assert.equal(wrongAgain.correct,FILLED);
+ assert.equal(state.marks[one],FILLED);
+ assert.equal(state.mistakes,2);
+});
+
+test('three wrong claims end the run',()=>{
+ const puzzle={...DIAGONAL};
+ const state=createGame(puzzle);
+ const list=zeros(puzzle,3);
+ claim(state,list[0],FILLED);
+ claim(state,list[1],FILLED);
+ assert.equal(state.status,'playing');
+ const last=claim(state,list[2],FILLED);
+ assert.equal(last.wrong,true);
+ assert.equal(state.mistakes,3);
+ assert.equal(state.status,'lost');
+ assert.ok(Number.isFinite(Date.parse(state.finishedAt)));
+ assert.equal(mistakesLeft(state),0);
+ assert.throws(()=>claim(state,12,FILLED));
+ assert.equal(isSolved(state),false);
+ assert.ok(validSave(state));
+});
+
+test('finishing the ones of a line auto-fills the rest with zeros',()=>{
+ const state=createGame(DIAGONAL);
+ const result=claim(state,0,FILLED);
+ assert.equal(result.ok,true);
+ assert.equal(result.auto.length,8);
+ for(let c=0;c<5;c++)assert.equal(state.marks[c],c===0?FILLED:MARKED);
+ assert.ok(state.auto.includes(4));
+ assert.equal(rowDone(state,0),true);
+ assert.equal(rowDone(state,1),false);
+});
+
+test('finishing the zeros of a line auto-fills the rest with ones',()=>{
+ const state=createGame(DIAGONAL);
+ claim(state,0,FILLED);
+ claim(state,11,MARKED);
+ claim(state,16,MARKED);
+ const last=claim(state,21,MARKED);
+ assert.ok(last.auto.includes(6));
+ assert.equal(state.marks[6],FILLED);
+ assert.equal(state.marks[1],MARKED);
+ assert.equal(state.marks[7],MARKED);
+ assert.equal(state.mistakes,0);
+});
+
+test('autofill cascades through rows and columns',()=>{
+ const puzzle={id:'TEST-CASCADE',size:5,name:'阶梯',solution:['10000','11000','11100','11110','11111']};
+ const state=createGame(puzzle);
+ const result=claim(state,0,FILLED);
+ assert.equal(result.auto.length,24);
+ assert.equal(autofill(state).length,0);
+ for(let i=0;i<25;i++)assert.notEqual(state.marks[i],EMPTY);
+ assert.equal(state.status,'won');
+ assert.equal(settledCount(state),25);
+ assert.equal(filledCount(state),15);
+ assert.equal(rowDone(state,4),true);
+ assert.equal(colDone(state,0),true);
+});
+
+test('solving needs only correct 1s because zeros fill themselves',()=>{
+ const puzzle=PUZZLES.find(item=>item.size===5);
+ const state=solve(createGame(puzzle));
  assert.equal(state.status,'won');
  assert.ok(isSolved(state));
+ assert.equal(settledCount(state),25);
  assert.ok(validSave(state));
- assert.throws(()=>setMark(state,0,FILLED));
- const rowStates=createGame(puzzle);
- for(let c=0;c<puzzle.size;c++)if(puzzle.solution[0][c]==='1')setMark(rowStates,c,FILLED);
- assert.ok(rowDone(rowStates,0));
- assert.ok(!rowDone(rowStates,1));
- assert.ok(!colDone(rowStates,0)||puzzle.size===1);
+ assert.throws(()=>claim(state,0,FILLED));
 });
 
-test('mistakes lists only wrongly filled cells',()=>{
- const puzzle=PUZZLES.find(item=>item.size===5);
- const state=createGame(puzzle);
- const blank=wrongIndex(puzzle);
- setMark(state,blank,FILLED);
- assert.deepEqual(mistakes(state),[blank]);
- setMark(state,blank,MARKED);
- assert.deepEqual(mistakes(state),[]);
- const target=puzzle.solution.join('');
- const filledIndex=target.indexOf('1');
- setMark(state,filledIndex,FILLED);
- assert.deepEqual(mistakes(state),[]);
+test('row and column completion ignores unfinished lines',()=>{
+ const state=createGame(DIAGONAL);
+ assert.equal(rowDone(state,0),false);
+ claim(state,0,FILLED);
+ assert.equal(rowDone(state,0),true);
+ assert.equal(rowDone(state,1),false);
+ assert.equal(colDone(state,0),true);
+ assert.equal(colDone(state,1),false);
 });
 
-test('save validation rejects malformed grids and resumes',()=>{
- const puzzle=PUZZLES.find(item=>item.size===5);
- const state=createGame(puzzle);
- setMark(state,0,FILLED);
- const restored=JSON.parse(JSON.stringify(state));
- assert.ok(validSave(restored));
- setMark(restored,1,FILLED);
- assert.ok(validSave(restored));
- assert.equal(validSave({...state,size:7}),false);
- assert.equal(validSave({...state,marks:[]}),false);
- assert.equal(validSave({...state,marks:Array(25).fill(9)}),false);
- assert.equal(validSave({...state,status:'won'}),false);
- assert.equal(validSave({...state,mode:'daily'}),false);
- assert.equal(validSave({...state,solution:['11111','11111','11111','11111','11111']}),false);
- assert.equal(validSave({...state,solution:['00000','00000','00000','00000','00000']}),false);
- assert.equal(validSave({...state,startedAt:'nope'}),false);
+test('save validation accepts settled boards and rejects tampering',()=>{
+ const puzzle={...DIAGONAL};
+ const fresh=createGame(puzzle);
+ assert.ok(validSave(fresh));
+ const playing=structuredClone(fresh);
+ claim(playing,0,FILLED);
+ assert.ok(validSave(playing));
+ assert.equal(validSave({...playing,version:1}),false);
+ assert.equal(validSave({...playing,size:7}),false);
+ assert.equal(validSave({...playing,mistakes:-1}),false);
+ assert.equal(validSave({...playing,mistakes:4}),false);
+ assert.equal(validSave({...playing,status:'won'}),false);
+ const onZero={...structuredClone(playing)};
+ onZero.marks[4]=FILLED;
+ assert.equal(validSave(onZero),false);
+ const badAuto={...structuredClone(playing),auto:[24]};
+ assert.equal(validSave(badAuto),false);
+ const noList={...structuredClone(playing)};
+ delete noList.wrong;
+ assert.equal(validSave(noList),false);
+ const won=solve(createGame(puzzle));
+ assert.ok(validSave(won));
+ const missing={...structuredClone(won)};
+ missing.marks[24]=EMPTY;
+ assert.equal(validSave(missing),false);
+ const lost=createGame(puzzle);
+ for(const index of zeros(puzzle,3))claim(lost,index,FILLED);
+ assert.equal(lost.status,'lost');
+ assert.ok(validSave(lost));
+ const fakeLost={...structuredClone(lost),mistakes:1};
+ assert.equal(validSave(fakeLost),false);
 });
 
 test('daily pick is stable per date and rolls over at Beijing midnight',()=>{
