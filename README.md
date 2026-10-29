@@ -41,7 +41,7 @@
 
 ```text
 10HGame/
-├── 启动游戏库.bat       一键启动或复用统一服务
+├── start.bat            一键启动或复用统一服务
 ├── server.mjs           唯一 HTTP 监听器
 ├── package.json
 ├── library/             页面、目录清单、返回入口
