@@ -16,8 +16,9 @@ export const upper = sheet => categories.slice(0,6).reduce((s,[k])=>s+(sheet[k]?
 export const total = sheet => Object.values(sheet).reduce((s,v)=>s+v,0)+(upper(sheet)>=63?35:0);
 export const available = sheet => categories.filter(([k])=>sheet[k]===undefined).map(([k])=>k);
 export function createGame(players) { return {version:1,players:players.map(p=>({...p,sheet:{}})),turn:0,dice:[1,2,3,4,5],held:[false,false,false,false,false],rolls:0,done:false,log:[]}; }
+export const canRoll = game => !game.done && (game.rolls < 3 || (game.unlimitedRolls === true && game.players[game.turn].type === 'human'));
 export function roll(game, rng = Math.random) {
-  if(game.done || game.rolls>=3) throw new Error('本回合不能继续掷骰');
+  if(!canRoll(game)) throw new Error('本回合不能继续掷骰');
   game.dice=game.dice.map((d,i)=>game.rolls && game.held[i]?d:Math.floor(rng()*6)+1); game.rolls++;
 }
 export function commit(game,key) {
@@ -61,6 +62,6 @@ export function botDecision(game,level='normal',rng=Math.random) {
 }
 export function validateDecision(action,game) {
   if(action?.type==='score' && available(game.players[game.turn].sheet).includes(action.category)) return {type:'score',category:action.category};
-  if(action?.type==='roll' && game.rolls<3 && Array.isArray(action.keep) && action.keep.length<5 && new Set(action.keep).size===action.keep.length && action.keep.every(i=>Number.isInteger(i)&&i>=0&&i<5)) return {type:'roll',keep:action.keep};
+  if(action?.type==='roll' && canRoll(game) && Array.isArray(action.keep) && action.keep.length<5 && new Set(action.keep).size===action.keep.length && action.keep.every(i=>Number.isInteger(i)&&i>=0&&i<5)) return {type:'roll',keep:action.keep};
   throw new Error('模型返回了无效行动');
 }

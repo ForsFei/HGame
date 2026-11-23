@@ -33,6 +33,22 @@ test('model actions reject illegal choices and indices',()=>{
  assert.throws(()=>validateDecision({type:'score',category:'oops'},g));g.rolls=3;assert.throws(()=>validateDecision({type:'roll',keep:[]},g));
  commit(g,'ones');assert.throws(()=>validateDecision({type:'score',category:'ones'},g));
 });
+test('unlimited human rolls preserve holds and disabling restores the limit',()=>{
+ const g=createGame([{name:'local',type:'human'},{name:'remote',type:'model'}]);
+ g.unlimitedRolls=true;
+ roll(g,()=>0);g.held[0]=true;
+ for(let i=0;i<8;i++){
+  validateDecision({type:'roll',keep:[0]},g);
+  roll(g,()=>.99);
+ }
+ assert.equal(g.rolls,9);assert.equal(g.dice[0],1);
+ g.unlimitedRolls=false;
+ assert.throws(()=>roll(g));assert.throws(()=>validateDecision({type:'roll',keep:[]},g));
+ commit(g,'sixes');assert.equal(g.players[0].sheet.sixes,24);
+ g.unlimitedRolls=true;
+ for(let i=0;i<3;i++)roll(g);
+ assert.throws(()=>roll(g));assert.throws(()=>validateDecision({type:'roll',keep:[]},g));
+});
 test('all built-in levels finish entire 4-player games',()=>{
  let seed=123456;const rng=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
  for(const level of ['easy','normal','hard']){

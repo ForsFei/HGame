@@ -1,4 +1,4 @@
-import {categories,score,upper,total,available,createGame,roll,commit,botDecision,validateDecision} from './engine.js';
+import {categories,score,upper,total,available,createGame,canRoll,roll,commit,botDecision,validateDecision} from './engine.js';
 const $=id=>document.getElementById(id), esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let game, busy=false, epoch=0, selected=null, config={base:'https://api.openai.com/v1',model:'',key:''}, sound=true, audio;
 let quietView=document.documentElement.dataset.view==='quiet', lastStatus=['好运从这里启航','每回合最多掷三次，也可以提前计分。'];
@@ -12,10 +12,10 @@ const participantName=(p,i=game.players.indexOf(p))=>quietView?`方案 ${String.
 function status(title,text){lastStatus=[title,text];$('statusTitle').textContent=quietView?'处理状态':title;$('status').textContent=quietView?quietStatus(text):text;}
 function quietStatus(text){
  // Operational failures remain visible; routine flavor text becomes a neutral instruction.
- if(/失败|超时|尚未配置|无效|限制|检查|最多等待|\[[A-Z_0-9]+\]/.test(text))return text.replaceAll('对局','记录').replaceAll('游戏','页面').replaceAll('骰子','数据').replaceAll('模型回合','处理流程');
+ if(/采样已|失败|超时|尚未配置|无效|限制|检查|最多等待|\[[A-Z_0-9]+\]/.test(text))return text.replaceAll('对局','记录').replaceAll('游戏','页面').replaceAll('骰子','数据').replaceAll('模型回合','处理流程');
  if(game?.done)return '所有记录已完成，可查看汇总或新建记录。';
  if(game&&!isHuman())return '自动处理进行中，请等待当前记录写入。';
- return game?.rolls?`已采样 ${game.rolls}/3 次。点击数值锁定，选择统计项后确认写入。`:'点击「更新数据」开始当前记录，统计项将显示可写入数值。';
+ return game?.rolls?`已采样 ${game.rolls}/${game.unlimitedRolls?'∞':3} 次。点击数值锁定，选择统计项后确认写入。`:'点击「更新数据」开始当前记录，统计项将显示可写入数值。';
 }
 const viewText=[
  ['.brand','数据工作台 <small>本地 / 分析视图</small>'],['.title .eyebrow','LOCAL DATA WORKSPACE'],['h1','采样分析<span>工作记录</span>'],['.title p','本地数据采样、分类汇总与记录管理。'],['#newButton','＋ 新建记录'],['#rulesButton','操作说明'],['#aiButton','接口设置'],['.live-dot','本地处理'],['.table-hint','点击数值锁定 · 选择统计项后确认写入'],['.score-heading h2','统计明细'],['.score-heading>span','SUMMARY'],['.section-label','最近记录 <span>RECENT RECORDS</span>'],['.score-note','前六项累计达到 63，调整值为 35。每项仅可写入一次。'],['footer','本地工作区 <span>自动保存 · 无需登录</span>'],
@@ -36,20 +36,29 @@ function applyView(){
 }
 function toggleView(){quietView=!quietView;applyView();store.set('yacht-view',quietView?'quiet':'standard');}
 $('viewButton').onclick=toggleView;
-document.addEventListener('keydown',e=>{if(e.altKey&&e.code==='KeyM'&&!e.repeat){e.preventDefault();toggleView();}});
+document.addEventListener('keydown',e=>{
+ if(e.altKey&&e.code==='KeyM'&&!e.repeat){e.preventDefault();toggleView();}
+ if(e.altKey&&e.shiftKey&&!e.ctrlKey&&!e.metaKey&&e.code==='KeyC'&&!e.repeat){
+  if(e.target.closest('input,textarea,select,[contenteditable=true]'))return;
+  e.preventDefault();if(!game||busy)return;
+  game.unlimitedRolls=!game.unlimitedRolls;render();save();
+  status(quietView?'采样额度':'作弊模式',game.unlimitedRolls?(quietView?'扩展采样已启用，Alt+Shift+C 恢复标准额度。':'无限掷骰已开启，Alt+Shift+C 关闭。'):(quietView?'标准采样已恢复，达到三次后需写入当前指标。':'无限掷骰已关闭，达到三次后请计分。'));
+ }
+});
 function beep(){if(!sound||quietView)return;try{audio??=new (window.AudioContext||window.webkitAudioContext)();audio.resume();const o=audio.createOscillator(),g=audio.createGain();o.connect(g);g.connect(audio.destination);o.frequency.setValueAtTime(480,audio.currentTime);o.frequency.exponentialRampToValueAtTime(170,audio.currentTime+.09);g.gain.setValueAtTime(.045,audio.currentTime);g.gain.exponentialRampToValueAtTime(.001,audio.currentTime+.12);o.start();o.stop(audio.currentTime+.13);}catch{}}
 $('soundButton').onclick=()=>{sound=!sound;$('soundButton').textContent=`音效：${sound?'开':'关'}`;};
 const pipPositions={1:[5],2:[1,9],3:[1,5,9],4:[1,3,7,9],5:[1,3,5,7,9],6:[1,3,4,6,7,9]};
 function isHuman(){return game.players[game.turn].type==='human';}
 function render(){
- const p=game.players[game.turn], human=isHuman(), can=human&&!busy&&!game.done;
+ const p=game.players[game.turn], human=isHuman(), can=human&&!busy&&!game.done, unlimited=human&&game.unlimitedRolls===true;
  $('players').innerHTML=game.players.map((p,i)=>`<div class="player ${i===game.turn&&!game.done?'active':''}"><div class="avatar">${p.type==='human'?'♙':p.type==='model'?'✦':'⌘'}</div><div class="player-info"><strong>${esc(participantName(p,i))}</strong><small>${quietView?(p.type==='human'?'手动记录':p.type==='model'?'接口处理':'自动处理'):(p.type==='human'?'本地玩家':p.type==='model'?'API 模型':({easy:'休闲人机',normal:'标准人机',hard:'挑战人机'})[p.level])} · ${Object.keys(p.sheet).length}/12</small></div><b>${total(p.sheet)}</b></div>`).join('');
  $('roundLabel').textContent=`${quietView?'记录':'第'} ${String(Math.min(12,Object.keys(p.sheet).length+1)).padStart(2,'0')} / 12 ${quietView?'':'回合'}`;
  $('turnLabel').textContent=quietView?(game.done?'记录已完成':`${participantName(p)} · ${human?'待处理':'自动处理中'}`):(game.done?'本次航行已完成':`${p.name}，${human?'轮到你了':'正在思考'}`);
- $('instruction').textContent=quietView?(game.done?'汇总已生成':`采样次数 ${game.rolls}/3 · ${game.rolls?'点击数值切换锁定':'等待更新数据'}`):(game.done?'查看得分，或开启下一次航行':!game.rolls?'掷出五颗骰子，开启这个回合':`已掷 ${game.rolls} 次 · ${3-game.rolls} 次机会剩余`);
- $('dice').innerHTML=game.dice.map((d,i)=>`<button class="die ${game.held[i]?'held':''} ${game.rolls?'':'blank'}" data-die="${i}" aria-label="${quietView?'字段':'第'} ${i+1} ${quietView?'':'颗'}：${game.rolls?d:(quietView?'待采样':'未掷')}，${game.held[i]?(quietView?'已锁定':'已保留'):(quietView?'未锁定':'未保留')}" aria-pressed="${game.held[i]}" ${!can||!game.rolls||game.rolls>=3?'disabled':''}>${quietView?`<span class="field-label">字段 ${String(i+1).padStart(2,'0')}</span><span class="field-value">${game.rolls?d:'—'}</span><span class="field-state">${game.held[i]?'已锁定':'自动'}</span>`:pipPositions[d].map(n=>`<span class="pip" style="grid-area:${Math.ceil(n/3)}/${(n-1)%3+1}"></span>`).join('')}</button>`).join('');
+ $('instruction').textContent=quietView?(game.done?'汇总已生成':`采样次数 ${game.rolls}/${unlimited?'∞':3} · ${game.rolls?'点击数值切换锁定':'等待更新数据'}`):(game.done?'查看得分，或开启下一次航行':!game.rolls?'掷出五颗骰子，开启这个回合':`已掷 ${game.rolls} 次 · ${unlimited?'无限':Math.max(0,3-game.rolls)} 次机会剩余`);
+ $('dice').innerHTML=game.dice.map((d,i)=>`<button class="die ${game.held[i]?'held':''} ${game.rolls?'':'blank'}" data-die="${i}" aria-label="${quietView?'字段':'第'} ${i+1} ${quietView?'':'颗'}：${game.rolls?d:(quietView?'待采样':'未掷')}，${game.held[i]?(quietView?'已锁定':'已保留'):(quietView?'未锁定':'未保留')}" aria-pressed="${game.held[i]}" ${!can||!game.rolls||!canRoll(game)?'disabled':''}>${quietView?`<span class="field-label">字段 ${String(i+1).padStart(2,'0')}</span><span class="field-value">${game.rolls?d:'—'}</span><span class="field-state">${game.held[i]?'已锁定':'自动'}</span>`:pipPositions[d].map(n=>`<span class="pip" style="grid-area:${Math.ceil(n/3)}/${(n-1)%3+1}"></span>`).join('')}</button>`).join('');
  $('rollProgress').innerHTML=[1,2,3].map(n=>`<i class="${game.rolls>=n?'used':''}"></i>`).join('');
- $('rollButton').disabled=!can||game.rolls>=3||(game.rolls>0&&game.held.every(Boolean));
+ $('rollButton').disabled=!can||!canRoll(game)||(game.rolls>0&&game.held.every(Boolean));
+ $('rollButton').title='Alt+Shift+C · '+(game.unlimitedRolls?(quietView?'扩展采样':'无限掷骰'):(quietView?'标准采样':'标准规则'));
  $('rollButton').innerHTML=quietView?(game.done?'处理完成':busy?'处理中…':game.rolls?'重新采样':'更新数据'):(game.done?'对局结束':busy?'正在进行…':`${game.rolls?'再掷一次':'掷骰子'} <span>↻</span>`);
  const head=`<thead><tr><th>${quietView?'统计项':'计分项目'}</th>${game.players.map((p,i)=>`<th title="${esc(participantName(p,i))}">${esc(participantName(p,i))}</th>`).join('')}</tr></thead>`;
  const summary=(label,fn,cls='summary')=>`<tr class="${cls}"><td>${label}</td>${game.players.map(p=>`<td>${fn(p.sheet)}</td>`).join('')}</tr>`;
@@ -65,10 +74,11 @@ function render(){
 $('dice').onclick=e=>{const b=e.target.closest('[data-die]');if(!b||b.disabled)return;game.held[+b.dataset.die]=!game.held[+b.dataset.die];beep();save();render();};
 $('scorecard').onclick=e=>{const b=e.target.closest('[data-category]');if(!b||b.disabled)return;selected=b.dataset.category;render();};
 async function doRoll(){
+ if(busy||!canRoll(game))return;
  const token=epoch;busy=true;selected=null;render();$('dice').classList.add('rolling');beep();
  await new Promise(r=>setTimeout(r,420));if(token!==epoch)return;
  roll(game);busy=false;$('dice').classList.remove('rolling');save();render();
- if(game.rolls===3)status('选择这一手的归宿','掷骰机会已用完，选择计分项后确认填入。');
+ if(game.rolls===3&&!canRoll(game))status('选择这一手的归宿','掷骰机会已用完，选择计分项后确认填入。');
  else status('留住你想要的点数','点击骰子保留，再掷一次；也可以直接选择计分项。');
 }
 $('rollButton').onclick=()=>doRoll();
@@ -115,6 +125,6 @@ $('closeAI').onclick=()=>$('aiSettings').close();
 $('provider').onchange=()=>{const p=$('provider').value;$('base').value=p==='openai'?'https://api.openai.com/v1':p==='deepseek'?'https://api.deepseek.com':'http://127.0.0.1:11434/v1';$('model').value=p==='deepseek'?'deepseek-flash':'';};
 $('aiForm').onsubmit=e=>{e.preventDefault();config={base:$('base').value.trim(),model:$('model').value.trim(),key:$('apiKey').value.trim()};$('aiSettings').close();status('模型配置已应用','配置仅在本次页面会话中有效。选择「单人 · 对战 AI 模型」开始新对局；已暂停的模型回合可点击重试。');};
 applyView();
-try{const data=JSON.parse(store.get('yacht-game'));if(data?.version===1&&Array.isArray(data.players)&&data.players.length>=1&&data.players.length<=4&&Number.isInteger(data.turn)&&data.turn>=0&&data.turn<data.players.length&&Array.isArray(data.dice)&&data.dice.length===5&&data.dice.every(d=>Number.isInteger(d)&&d>=1&&d<=6)&&Array.isArray(data.held)&&data.held.length===5&&Number.isInteger(data.rolls)&&data.rolls>=0&&data.rolls<=3&&Array.isArray(data.log)&&data.players.every(p=>typeof p.name==='string'&&['human','cpu','model'].includes(p.type)&&p.sheet&&Object.entries(p.sheet).every(([k,v])=>categories.some(c=>c[0]===k)&&Number.isFinite(v)&&v>=0&&v<=50)))game=data;}catch{}
+try{const data=JSON.parse(store.get('yacht-game'));if(data?.version===1&&Array.isArray(data.players)&&data.players.length>=1&&data.players.length<=4&&Number.isInteger(data.turn)&&data.turn>=0&&data.turn<data.players.length&&Array.isArray(data.dice)&&data.dice.length===5&&data.dice.every(d=>Number.isInteger(d)&&d>=1&&d<=6)&&Array.isArray(data.held)&&data.held.length===5&&Number.isSafeInteger(data.rolls)&&data.rolls>=0&&Array.isArray(data.log)&&data.players.every(p=>typeof p.name==='string'&&['human','cpu','model'].includes(p.type)&&p.sheet&&Object.entries(p.sheet).every(([k,v])=>categories.some(c=>c[0]===k)&&Number.isFinite(v)&&v>=0&&v<=50)))game={...data,unlimitedRolls:false};}catch{}
 if(game){render();status('已恢复上次的航行','对局自动保存在此浏览器中。模型 Key 不会存档，需重新填写。');if(game.done)showResults();else scheduleBot();}
 else{game=createGame([{name:'你',type:'human'},{name:'领航员',type:'cpu',level:'normal'}]);render();openSetup();}
